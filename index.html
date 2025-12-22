@@ -13,7 +13,7 @@
         <div class="logo">KC</div>
         <div class="titlewrap">
           <div class="title">Kingdom Crowdshot</div>
-          <div class="subtitle">Swipe lanes. Choose gates. Build your kingdom between runs.</div>
+          <div class="subtitle">Swipe lanes. Choose gates. Defend your kingdom between runs.</div>
         </div>
       </div>
 
@@ -25,6 +25,10 @@
         <div class="pill">
           <div class="lbl">Gold</div>
           <div class="val" id="hudGold">0</div>
+        </div>
+        <div class="pill">
+          <div class="lbl">Soldiers</div>
+          <div class="val" id="hudSoldiers">0</div>
         </div>
         <div class="pill">
           <div class="lbl">Distance</div>
@@ -58,6 +62,7 @@
         <div class="bottomBar">
           <button class="btn small" id="btnPause">Pause</button>
           <button class="btn small" id="btnKingdom">Kingdom</button>
+          <button class="btn small" id="btnDefense">Defense</button>
           <button class="btn small danger" id="btnRestart">Restart</button>
         </div>
 
@@ -68,18 +73,19 @@
             <div class="panelBody">
               <div class="how">
                 <div><span class="kbd">Swipe</span> or <span class="kbd">← / →</span> to switch lanes.</div>
-                <div>Pick the better gate: <span class="tag plus">+N</span>, <span class="tag mult">×N</span>, avoid <span class="tag risk">−N</span> traps.</div>
-                <div>Fight enemy crowds: if you have more, you win and earn <span class="tag gold">gold</span>.</div>
-                <div>Spend gold in <span class="tag kingdom">Kingdom</span> upgrades (Kingshot-ish progression).</div>
+                <div>Pick gates: <span class="tag plus">+N</span>, <span class="tag mult">×N</span>, avoid <span class="tag risk">−N</span>.</div>
+                <div>Late-game clashes scale to your power—expect <span class="tag warn">huge</span> armies.</div>
+                <div>Earn <span class="tag gold">Gold</span> + <span class="tag soldiers">Soldiers</span>, then defend via towers in <span class="tag defense">Defense</span>.</div>
               </div>
 
               <div class="ctaRow">
                 <button class="btn primary" id="btnPlay">Play</button>
                 <button class="btn" id="btnPractice">Practice (slower)</button>
+                <button class="btn" id="btnOpenDefenseFromStart">Defense</button>
               </div>
 
               <div class="miniNote">
-                Tip: Early game loves big +N; late game loves multipliers. Your kingdom upgrades tilt the odds.
+                Tip: When you’re already massive, multipliers are rocket fuel. Towers convert soldiers into reliable defense power.
               </div>
             </div>
           </div>
@@ -90,13 +96,17 @@
           <div class="panel wide">
             <div class="panelTitle">
               Kingdom Upgrades
-              <span class="subTitle" id="kingdomSub">Spend gold to grow stronger.</span>
+              <span class="subTitle" id="kingdomSub">Spend gold on passive run perks.</span>
             </div>
             <div class="panelBody">
               <div class="kingStats">
                 <div class="statCard">
-                  <div class="sLbl">Bank</div>
+                  <div class="sLbl">Bank (Gold)</div>
                   <div class="sVal" id="kGold">0</div>
+                </div>
+                <div class="statCard">
+                  <div class="sLbl">Bank (Soldiers)</div>
+                  <div class="sVal" id="kSoldiers">0</div>
                 </div>
                 <div class="statCard">
                   <div class="sLbl">Start Crowd</div>
@@ -105,10 +115,6 @@
                 <div class="statCard">
                   <div class="sLbl">Gate Luck</div>
                   <div class="sVal" id="kLuck">0%</div>
-                </div>
-                <div class="statCard">
-                  <div class="sLbl">Shield Charges</div>
-                  <div class="sVal" id="kShield">0</div>
                 </div>
               </div>
 
@@ -120,7 +126,59 @@
               </div>
 
               <div class="miniNote">
-                Heroes are passive perks. No “idle timers” here—just clean progression and faster, juicier runs.
+                Kingshot-ish: Upgrades are your permanent “kingdom tech.” Defense towers are a separate layer in Defense.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Defense overlay -->
+        <div class="overlay hidden" id="overlayDefense">
+          <div class="panel wide">
+            <div class="panelTitle">
+              Kingdom Defense
+              <span class="subTitle" id="defSub">Buy/upgrade towers, assign soldiers, fight waves.</span>
+            </div>
+            <div class="panelBody">
+              <div class="defTop">
+                <div class="statCard">
+                  <div class="sLbl">Bank (Gold)</div>
+                  <div class="sVal" id="dGold">0</div>
+                </div>
+                <div class="statCard">
+                  <div class="sLbl">Bank (Soldiers)</div>
+                  <div class="sVal" id="dSoldiers">0</div>
+                </div>
+                <div class="statCard">
+                  <div class="sLbl">Wave</div>
+                  <div class="sVal" id="dWave">1</div>
+                </div>
+                <div class="statCard">
+                  <div class="sLbl">Next Enemy Army</div>
+                  <div class="sVal" id="dEnemy">0</div>
+                </div>
+              </div>
+
+              <div class="defGrid" id="towerGrid"></div>
+
+              <div class="defBottom">
+                <div class="defCard">
+                  <div class="defLabel">Your Defense Power</div>
+                  <div class="defValue" id="dPower">0</div>
+                  <div class="defHint">Power = (assigned soldiers) × tower multipliers × kingdom bonuses</div>
+                </div>
+
+                <div class="defActions">
+                  <button class="btn primary" id="btnFightWave">Fight Wave</button>
+                  <button class="btn" id="btnBuyTowerSlot">Buy Tower Slot</button>
+                  <button class="btn" id="btnCloseDefense">Back</button>
+                </div>
+
+                <div class="defReport" id="defReport">Assign soldiers to towers, then fight.</div>
+              </div>
+
+              <div class="miniNote">
+                Strategy: Fewer towers with higher level can outperform many low towers. Don’t ignore soldiers bank—this is your “army placement” layer.
               </div>
             </div>
           </div>
@@ -135,6 +193,7 @@
               <div class="ctaRow">
                 <button class="btn primary" id="btnRunAgain">Run Again</button>
                 <button class="btn" id="btnGoKingdom">Kingdom</button>
+                <button class="btn" id="btnGoDefense">Defense</button>
               </div>
               <div class="miniNote" id="deathTip">Tip appears here.</div>
             </div>
