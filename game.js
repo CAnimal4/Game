@@ -314,16 +314,24 @@
       const n = Math.floor(base + rnd(0, spread) * (1 + 0.6 * luck));
       return { type: "plus", n };
     }
+
+    // ===== CHANGE #1 (cap offered multipliers when you’re already huge) =====
     if (kind === "mult") {
       const pool =
         t < 0.6 ? [2, 2, 3, 3, 4] :
         t < 1.2 ? [2, 3, 3, 4, 4, 5] :
                   [3, 4, 4, 5, 5, 6, 7];
+
+      // If you're already huge, don't keep offering rocket-fuel multipliers.
+      const digits = (game.crowd < 0n ? 0n : game.crowd).toString().length;
+      const cap = clamp(8 - Math.floor(Math.max(0, digits - 6) / 2), 2, 8); // 8..2
+
       let m = pick(pool);
       if (Math.random() < luck * 0.55) m += 1;
-      m = clamp(m, 2, 8);
+      m = clamp(m, 2, cap);
       return { type: "mult", m };
     }
+
     const base = 6 + Math.floor(6 * t);
     const spread = 10 + Math.floor(12 * t);
     const n = Math.floor(base + rnd(0, spread));
@@ -358,7 +366,7 @@
   }
 
   // =========================
-  // Spawn (THIS is what you’re missing because run isn’t starting)
+  // Spawn
   // =========================
   function spawn(t) {
     const luck = luckPercent() / 100;
@@ -395,7 +403,6 @@
       left = maybePurify(gateCardFromRoll(left.roll));
       right = maybePurify(gateCardFromRoll(right.roll));
 
-      // occasional gold/soldier gate
       if (Math.random() < (0.06 + 0.06 * luck)) {
         const side = Math.random() < 0.5 ? "left" : "right";
         if (Math.random() < 0.55) {
@@ -428,7 +435,6 @@
       return;
     }
 
-    // Enemy scaling: always scales with you (fixes “trillions vs 40”)
     const crowd = game.crowd;
     const tNum = BigInt(Math.floor(clamp(t, 0, 2.6) * 100));
     let threat = 12n + BigInt(Math.floor(10 * t)) * 6n;
@@ -484,13 +490,22 @@
       showToast(`Recruit +${r.n}`);
       return;
     }
+
+    // ===== CHANGE #2 (soft-cap multiplier impact as crowd gets huge) =====
     if (r?.type === "mult") {
       const before = game.crowd;
-      game.crowd = game.crowd * BigInt(r.m);
-      showToast(`Rally ×${r.m}`);
+
+      // Soft-cap multipliers as the crowd gets huge (keeps gates “in pace” instead of runaway).
+      const digits = (game.crowd < 0n ? 0n : game.crowd).toString().length; // safe-ish
+      const soften = clamp(1 - Math.max(0, digits - 6) * 0.035, 0.35, 1);   // big crowd => smaller effective mult
+      const eff = clamp(1 + Math.floor((r.m - 1) * soften), 2, 8);
+
+      game.crowd = game.crowd * BigInt(eff);
+      showToast(`Rally ×${eff}`);
       if (game.crowd - before >= 40n) shake(160, 4);
       return;
     }
+
     if (r?.type === "risk") {
       if (game.shields > 0) {
         game.shields -= 1;
@@ -635,7 +650,6 @@
       }
     }
 
-    // drip gold
     if (!game.practice) {
       const drip = dt * (0.22 + game.dist * 0.00012);
       progress.goldBank += drip * goldBonusMult();
@@ -666,7 +680,7 @@
     game.dist = 0;
     game.baseSpeed = practice ? 260 : 330;
     game.speed = game.baseSpeed;
-    game.nextSpawn = 0.05; // IMPORTANT: spawn almost immediately
+    game.nextSpawn = 0.05;
     lastT = 0;
 
     updateHUD();
@@ -766,25 +780,399 @@
     showToast("Restarted");
   }
 
+  // =========================
+  // ===== CHANGE #3 (kingdom/defense buttons actually work) =====
+  // (This is the “big block” replacement you asked to apply.)
+  // =========================
+
   // Bind buttons if present
   onClickId("btnPlay", () => startRun(false));
   onClickId("btnPractice", () => startRun(true));
   onClickId("btnRestart", hardRestart);
+  onClickId("btnRunAgain", () => startRun(false));
 
-  // Fallback: tap overlay background to start if buttons aren’t bound
-  // (prevents “only restart works”)
+  // ===== Pause / Overlays =====
+  const upgradeGrid = $("upgradeGrid");
+  const towerGrid = $("towerGrid");
+  const defReport = $("defReport");
+
+  const kGoldEl = $("kGold");
+  const kSoldEl = $("kSoldiers");
+  const kStartEl = $("kStartCrowd");
+  const kLuckEl = $("kLuck");
+
+  const dGoldEl = $("dGold");
+  const dSoldEl = $("dSoldiers");
+  const dWaveEl = $("dWave");
+  const dEnemyEl = $("dEnemy");
+  const dPowerEl = $("dPower");
+
+  function hideMetaOverlays() {
+    overlayKingdom && overlayKingdom.classList.add("hidden");
+    overlayDefense && overlayDefense.classList.add("hidden");
+    overlayGameOver && overlayGameOver.classList.add("hidden");
+    // NOTE: overlayStart is “start screen” — we only show it for start, not for pause.
+  }
+
+  function togglePause() {
+    if (!game.running) return;
+    game.paused = !game.paused;
+    const btn = $("btnPause");
+    if (btn) btn.textContent = game.paused ? "Resume" : "Pause";
+    showToast(game.paused ? "Paused" : "Resumed");
+  }
+
+  // ===== Kingdom Upgrades =====
+  const UPG = [
+    {
+      key: "startCrowdLvl",
+      title: "Start Crowd",
+      desc: (lvl) => `Start with +${lvl * 3} crowd (base 10).`,
+      cost: (lvl) => Math.floor(60 * Math.pow(1.55, lvl))
+    },
+    {
+      key: "luckLvl",
+      title: "Gate Luck",
+      desc: (lvl) => `+${lvl * 4}% chance for better gates & fewer ambushes.`,
+      cost: (lvl) => Math.floor(85 * Math.pow(1.6, lvl))
+    },
+    {
+      key: "shieldLvl",
+      title: "Shields",
+      desc: (lvl) => `Start runs with ${lvl} shield(s) that block ambushes.`,
+      cost: (lvl) => Math.floor(110 * Math.pow(1.65, lvl))
+    },
+    {
+      key: "archerLvl",
+      title: "Archers",
+      desc: (lvl) => `Reduce enemy effective threat by ${Math.floor(clamp(lvl * 0.06, 0, 0.35) * 100)}%.`,
+      cost: (lvl) => Math.floor(120 * Math.pow(1.62, lvl))
+    },
+    {
+      key: "stewardLvl",
+      title: "Steward",
+      desc: (lvl) => `Gold gains ×${(1 + lvl * 0.08).toFixed(2)}.`,
+      cost: (lvl) => Math.floor(140 * Math.pow(1.62, lvl))
+    },
+    {
+      key: "mageLvl",
+      title: "Mage",
+      desc: (lvl) => `${Math.floor(clamp(lvl * 0.06, 0, 0.30) * 100)}% chance ambush becomes loot/shield/draft.`,
+      cost: (lvl) => Math.floor(160 * Math.pow(1.66, lvl))
+    }
+  ];
+
+  function renderKingdom() {
+    if (kGoldEl) kGoldEl.textContent = String(Math.floor(progress.goldBank));
+    if (kSoldEl) kSoldEl.textContent = formatBig(soldiersBankBig());
+    if (kStartEl) kStartEl.textContent = formatBig(startCrowdValueBig());
+    if (kLuckEl) kLuckEl.textContent = `${luckPercent()}%`;
+
+    if (!upgradeGrid) return;
+
+    upgradeGrid.innerHTML = UPG.map((u) => {
+      const lvl = progress[u.key] | 0;
+      const cost = u.cost(lvl);
+      const afford = progress.goldBank >= cost;
+      return `
+        <div class="upgradeCard">
+          <div class="uTop">
+            <div class="uTitle">${u.title}</div>
+            <div class="uLvl">Lv ${lvl}</div>
+          </div>
+          <div class="uDesc">${u.desc(lvl)}</div>
+          <div class="uBottom">
+            <div class="uCost">Cost: <b>${cost}</b> gold</div>
+            <button class="btn small ${afford ? "primary" : ""}" data-upg="${u.key}">
+              ${afford ? "Buy" : "Need Gold"}
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function openKingdom() {
+    if (game.running) game.paused = true;
+    hideMetaOverlays();
+    overlayStart && overlayStart.classList.add("hidden");
+    overlayKingdom && overlayKingdom.classList.remove("hidden");
+    renderKingdom();
+  }
+
+  function closeKingdom() {
+    overlayKingdom && overlayKingdom.classList.add("hidden");
+    if (game.running) game.paused = false;
+  }
+
+  function buyUpgrade(key) {
+    const u = UPG.find(x => x.key === key);
+    if (!u) return;
+    const lvl = progress[key] | 0;
+    const cost = u.cost(lvl);
+    if (progress.goldBank < cost) {
+      showToast("Not enough gold");
+      return;
+    }
+    progress.goldBank -= cost;
+    progress[key] = lvl + 1;
+    saveSave(progress);
+    updateHUD();
+    renderKingdom();
+    showToast(`${u.title} upgraded`);
+  }
+
+  // ===== Defense (Towers + Waves) =====
+  function ensureTowers() {
+    if (!Array.isArray(progress.towerLvls)) progress.towerLvls = [1];
+    if (!Array.isArray(progress.towerAssigned)) progress.towerAssigned = ["0"];
+    if (typeof progress.towerSlots !== "number" || progress.towerSlots < 1) progress.towerSlots = 1;
+
+    while (progress.towerLvls.length < progress.towerSlots) progress.towerLvls.push(1);
+    while (progress.towerAssigned.length < progress.towerSlots) progress.towerAssigned.push("0");
+  }
+
+  function assignedTotal() {
+    ensureTowers();
+    let sum = 0n;
+    for (let i = 0; i < progress.towerSlots; i++) sum += toBigIntSafe(progress.towerAssigned[i] || "0");
+    return sum;
+  }
+
+  function towerPower(i) {
+    const lvl = (progress.towerLvls[i] | 0) || 1;
+    const a = toBigIntSafe(progress.towerAssigned[i] || "0");
+    const mult = 1 + lvl * 0.35; // tower scaling
+    const bonus = 1 + (progress.archerLvl | 0) * 0.04; // archers help defense too
+    const fp = BigInt(Math.floor(mult * bonus * 1000));
+    return (a * fp) / 1000n;
+  }
+
+  function defensePower() {
+    ensureTowers();
+    let p = 0n;
+    for (let i = 0; i < progress.towerSlots; i++) p += towerPower(i);
+    return p;
+  }
+
+  function nextEnemyArmy() {
+    const wave = progress.defenseWave | 0;
+    const totalArmy = soldiersBankBig() + assignedTotal();
+    const pct = BigInt(clamp(28 + wave * 7, 30, 160)); // 30%..160% of your total
+    const base = (totalArmy * pct) / 100n;
+    const flat = BigInt(250 * wave);
+    return base + flat;
+  }
+
+  function renderDefense() {
+    ensureTowers();
+
+    if (dGoldEl) dGoldEl.textContent = String(Math.floor(progress.goldBank));
+    if (dSoldEl) dSoldEl.textContent = formatBig(soldiersBankBig());
+    if (dWaveEl) dWaveEl.textContent = String(progress.defenseWave | 0);
+
+    const enemy = nextEnemyArmy();
+    if (dEnemyEl) dEnemyEl.textContent = formatBig(enemy);
+
+    const pwr = defensePower();
+    if (dPowerEl) dPowerEl.textContent = formatBig(pwr);
+
+    if (!towerGrid) return;
+
+    towerGrid.innerHTML = Array.from({ length: progress.towerSlots }, (_, i) => {
+      const lvl = (progress.towerLvls[i] | 0) || 1;
+      const asg = toBigIntSafe(progress.towerAssigned[i] || "0");
+      const upCost = Math.floor(90 * Math.pow(1.7, lvl - 1));
+      const canUp = progress.goldBank >= upCost;
+      return `
+        <div class="towerCard">
+          <div class="tTop">
+            <div class="tTitle">Tower ${i + 1}</div>
+            <div class="tLvl">Lv ${lvl}</div>
+          </div>
+          <div class="tBody">
+            <div><span class="muted">Assigned:</span> <b>${formatBig(asg)}</b></div>
+            <div><span class="muted">Power:</span> <b>${formatBig(towerPower(i))}</b></div>
+          </div>
+          <div class="tActions">
+            <button class="btn small" data-tact="minus" data-i="${i}">-10%</button>
+            <button class="btn small primary" data-tact="plus" data-i="${i}">+10%</button>
+            <button class="btn small ${canUp ? "primary" : ""}" data-tact="up" data-i="${i}">
+              Upgrade (${upCost})
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    if (defReport) defReport.textContent = "Assign soldiers to towers, then fight.";
+  }
+
+  function openDefense() {
+    if (game.running) game.paused = true;
+    hideMetaOverlays();
+    overlayStart && overlayStart.classList.add("hidden");
+    overlayDefense && overlayDefense.classList.remove("hidden");
+    renderDefense();
+  }
+
+  function closeDefense() {
+    overlayDefense && overlayDefense.classList.add("hidden");
+    if (game.running) game.paused = false;
+  }
+
+  function adjustAssigned(i, dir) {
+    ensureTowers();
+    const bank = soldiersBankBig();
+    if (bank <= 0n && dir === "plus") return;
+
+    const cur = toBigIntSafe(progress.towerAssigned[i] || "0");
+    const delta = (bank * 10n) / 100n; // 10% of current bank
+    const step = delta > 0n ? delta : 1n;
+
+    if (dir === "plus") {
+      setSoldiersBankBig(bank - step);
+      progress.towerAssigned[i] = (cur + step).toString();
+    } else {
+      const giveBack = cur / 10n > 0n ? cur / 10n : (cur > 0n ? 1n : 0n);
+      if (giveBack <= 0n) return;
+      progress.towerAssigned[i] = (cur - giveBack).toString();
+      setSoldiersBankBig(bank + giveBack);
+    }
+
+    saveSave(progress);
+    updateHUD();
+    renderDefense();
+  }
+
+  function upgradeTower(i) {
+    ensureTowers();
+    const lvl = (progress.towerLvls[i] | 0) || 1;
+    const cost = Math.floor(90 * Math.pow(1.7, lvl - 1));
+    if (progress.goldBank < cost) {
+      showToast("Not enough gold");
+      return;
+    }
+    progress.goldBank -= cost;
+    progress.towerLvls[i] = lvl + 1;
+    saveSave(progress);
+    updateHUD();
+    renderDefense();
+    showToast(`Tower ${i + 1} upgraded`);
+  }
+
+  function buyTowerSlot() {
+    ensureTowers();
+    const n = progress.towerSlots | 0;
+    const cost = Math.floor(220 * Math.pow(1.75, n - 1));
+    if (progress.goldBank < cost) {
+      showToast("Not enough gold");
+      return;
+    }
+    progress.goldBank -= cost;
+    progress.towerSlots = n + 1;
+    progress.towerLvls.push(1);
+    progress.towerAssigned.push("0");
+    saveSave(progress);
+    updateHUD();
+    renderDefense();
+    showToast("New tower slot built");
+  }
+
+  function fightWave() {
+    ensureTowers();
+    const wave = progress.defenseWave | 0;
+    const enemy = nextEnemyArmy();
+    const pwr = defensePower();
+
+    if (pwr >= enemy) {
+      const goldGain = Math.floor((120 + wave * 40) * goldBonusMult());
+      progress.goldBank += goldGain;
+
+      const soldGain = enemy / 35n + BigInt(40 + wave * 10);
+      setSoldiersBankBig(soldiersBankBig() + soldGain);
+
+      progress.defenseWave = wave + 1;
+      saveSave(progress);
+
+      if (defReport) defReport.textContent = `Victory. +${goldGain} gold, +${formatBig(soldGain)} soldiers. Wave ${progress.defenseWave}.`;
+      showToast("Wave cleared");
+      updateHUD();
+      renderDefense();
+      return;
+    }
+
+    let bank = soldiersBankBig();
+    const casualties = enemy / 20n + BigInt(30 * wave);
+    bank = bank > casualties ? bank - casualties : 0n;
+    setSoldiersBankBig(bank);
+
+    for (let i = 0; i < progress.towerSlots; i++) {
+      const cur = toBigIntSafe(progress.towerAssigned[i] || "0");
+      const trim = cur / 12n; // ~8%
+      progress.towerAssigned[i] = (cur - trim).toString();
+    }
+
+    saveSave(progress);
+    if (defReport) defReport.textContent = `Defeat. Lost ${formatBig(casualties)} soldiers. Reassign and upgrade.`;
+    showToast("Defense failed");
+    updateHUD();
+    renderDefense();
+  }
+
+  function resetProgress() {
+    for (const k of Object.keys(defaultProgress)) progress[k] = JSON.parse(JSON.stringify(defaultProgress[k]));
+    saveSave(progress);
+    bestDistance = 0;
+    saveBest(0);
+    showToast("Progress reset");
+    updateHUD();
+    renderKingdom();
+    renderDefense();
+  }
+
+  // ===== Existing overlay tap-to-start =====
   on(overlayStart, "pointerdown", (e) => {
     const target = e.target;
-    // Don’t steal clicks from actual buttons
     if (target && target.closest && target.closest("button")) return;
     startRun(false);
   });
 
-  onClickId("btnRunAgain", () => startRun(false));
-  onClickId("btnGoKingdom", () => showToast("Kingdom UI requires matching HTML IDs"));
-  onClickId("btnGoDefense", () => showToast("Defense UI requires matching HTML IDs"));
+  // ===== Hook up ALL the UI buttons that exist in index.html =====
+  onClickId("btnPause", togglePause);
 
-  // Minimal working: if you only care about runner right now, this is enough.
+  onClickId("btnKingdom", openKingdom);
+  onClickId("btnDefense", openDefense);
+
+  onClickId("btnGoKingdom", openKingdom);
+  onClickId("btnGoDefense", openDefense);
+
+  onClickId("btnOpenDefenseFromStart", openDefense);
+
+  onClickId("btnCloseKingdom", closeKingdom);
+  onClickId("btnCloseDefense", closeDefense);
+
+  onClickId("btnBuyTowerSlot", buyTowerSlot);
+  onClickId("btnFightWave", fightWave);
+
+  onClickId("btnResetProgress", resetProgress);
+
+  on(upgradeGrid, "click", (e) => {
+    const b = e.target && e.target.closest ? e.target.closest("[data-upg]") : null;
+    if (!b) return;
+    buyUpgrade(b.getAttribute("data-upg"));
+  });
+
+  on(towerGrid, "click", (e) => {
+    const b = e.target && e.target.closest ? e.target.closest("[data-tact]") : null;
+    if (!b) return;
+    const act = b.getAttribute("data-tact");
+    const i = Number(b.getAttribute("data-i") || "0");
+    if (!Number.isFinite(i)) return;
+    if (act === "plus") return adjustAssigned(i, "plus");
+    if (act === "minus") return adjustAssigned(i, "minus");
+    if (act === "up") return upgradeTower(i);
+  });
 
   // =========================
   // Boot
