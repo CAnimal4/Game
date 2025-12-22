@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Kingdom Crowdshot</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">KC</div>
+        <div class="titlewrap">
+          <div class="title">Kingdom Crowdshot</div>
+          <div class="subtitle">Swipe lanes. Choose gates. Build your kingdom between runs.</div>
+        </div>
+      </div>
+
+      <div class="hud">
+        <div class="pill">
+          <div class="lbl">Crowd</div>
+          <div class="val" id="hudCrowd">10</div>
+        </div>
+        <div class="pill">
+          <div class="lbl">Gold</div>
+          <div class="val" id="hudGold">0</div>
+        </div>
+        <div class="pill">
+          <div class="lbl">Distance</div>
+          <div class="val" id="hudDist">0m</div>
+        </div>
+        <div class="pill">
+          <div class="lbl">Best</div>
+          <div class="val" id="hudBest">0m</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="stagewrap">
+      <div class="stage" id="stage" aria-label="Game stage">
+        <div class="lane laneL"></div>
+        <div class="lane laneR"></div>
+        <div class="divider"></div>
+
+        <div class="player" id="player" aria-label="Player">
+          <div class="chip">
+            <div class="king">👑</div>
+            <div class="num" id="playerNum">10</div>
+          </div>
+          <div class="shadow"></div>
+        </div>
+
+        <div class="fx" id="fx"></div>
+
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+        <div class="bottomBar">
+          <button class="btn small" id="btnPause">Pause</button>
+          <button class="btn small" id="btnKingdom">Kingdom</button>
+          <button class="btn small danger" id="btnRestart">Restart</button>
+        </div>
+
+        <!-- Start / Pause overlay -->
+        <div class="overlay" id="overlayStart">
+          <div class="panel">
+            <div class="panelTitle">Kingdom Crowdshot</div>
+            <div class="panelBody">
+              <div class="how">
+                <div><span class="kbd">Swipe</span> or <span class="kbd">← / →</span> to switch lanes.</div>
+                <div>Pick the better gate: <span class="tag plus">+N</span>, <span class="tag mult">×N</span>, avoid <span class="tag risk">−N</span> traps.</div>
+                <div>Fight enemy crowds: if you have more, you win and earn <span class="tag gold">gold</span>.</div>
+                <div>Spend gold in <span class="tag kingdom">Kingdom</span> upgrades (Kingshot-ish progression).</div>
+              </div>
+
+              <div class="ctaRow">
+                <button class="btn primary" id="btnPlay">Play</button>
+                <button class="btn" id="btnPractice">Practice (slower)</button>
+              </div>
+
+              <div class="miniNote">
+                Tip: Early game loves big +N; late game loves multipliers. Your kingdom upgrades tilt the odds.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kingdom overlay -->
+        <div class="overlay hidden" id="overlayKingdom">
+          <div class="panel wide">
+            <div class="panelTitle">
+              Kingdom Upgrades
+              <span class="subTitle" id="kingdomSub">Spend gold to grow stronger.</span>
+            </div>
+            <div class="panelBody">
+              <div class="kingStats">
+                <div class="statCard">
+                  <div class="sLbl">Bank</div>
+                  <div class="sVal" id="kGold">0</div>
+                </div>
+                <div class="statCard">
+                  <div class="sLbl">Start Crowd</div>
+                  <div class="sVal" id="kStartCrowd">10</div>
+                </div>
+                <div class="statCard">
+                  <div class="sLbl">Gate Luck</div>
+                  <div class="sVal" id="kLuck">0%</div>
+                </div>
+                <div class="statCard">
+                  <div class="sLbl">Shield Charges</div>
+                  <div class="sVal" id="kShield">0</div>
+                </div>
+              </div>
+
+              <div class="upgrades" id="upgradeGrid"></div>
+
+              <div class="ctaRow">
+                <button class="btn primary" id="btnCloseKingdom">Back</button>
+                <button class="btn" id="btnResetProgress">Reset Progress</button>
+              </div>
+
+              <div class="miniNote">
+                Heroes are passive perks. No “idle timers” here—just clean progression and faster, juicier runs.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Game over overlay -->
+        <div class="overlay hidden" id="overlayGameOver">
+          <div class="panel">
+            <div class="panelTitle">Run Over</div>
+            <div class="panelBody">
+              <div class="summary" id="summary"></div>
+              <div class="ctaRow">
+                <button class="btn primary" id="btnRunAgain">Run Again</button>
+                <button class="btn" id="btnGoKingdom">Kingdom</button>
+              </div>
+              <div class="miniNote" id="deathTip">Tip appears here.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <footer class="foot">
+      <div>No ads. Offline. Your only enemy is math and hubris.</div>
+      <div class="muted">Controls: Swipe / Arrow keys / A-D</div>
+    </footer>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
