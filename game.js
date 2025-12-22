@@ -1,7 +1,9 @@
 (() => {
   "use strict";
 
-  // --- DOM ---
+  // =========================
+  // DOM
+  // =========================
   const stage = document.getElementById("stage");
   const playerEl = document.getElementById("player");
   const playerNumEl = document.getElementById("playerNum");
@@ -10,11 +12,13 @@
 
   const hudCrowd = document.getElementById("hudCrowd");
   const hudGold = document.getElementById("hudGold");
+  const hudSoldiers = document.getElementById("hudSoldiers");
   const hudDist = document.getElementById("hudDist");
   const hudBest = document.getElementById("hudBest");
 
   const overlayStart = document.getElementById("overlayStart");
   const overlayKingdom = document.getElementById("overlayKingdom");
+  const overlayDefense = document.getElementById("overlayDefense");
   const overlayGameOver = document.getElementById("overlayGameOver");
 
   const btnPlay = document.getElementById("btnPlay");
@@ -22,21 +26,38 @@
   const btnPause = document.getElementById("btnPause");
   const btnRestart = document.getElementById("btnRestart");
   const btnKingdom = document.getElementById("btnKingdom");
+  const btnDefense = document.getElementById("btnDefense");
   const btnCloseKingdom = document.getElementById("btnCloseKingdom");
   const btnResetProgress = document.getElementById("btnResetProgress");
+  const btnOpenDefenseFromStart = document.getElementById("btnOpenDefenseFromStart");
 
   const summaryEl = document.getElementById("summary");
   const deathTipEl = document.getElementById("deathTip");
   const btnRunAgain = document.getElementById("btnRunAgain");
   const btnGoKingdom = document.getElementById("btnGoKingdom");
+  const btnGoDefense = document.getElementById("btnGoDefense");
 
   const kGoldEl = document.getElementById("kGold");
+  const kSoldiersEl = document.getElementById("kSoldiers");
   const kStartCrowdEl = document.getElementById("kStartCrowd");
   const kLuckEl = document.getElementById("kLuck");
-  const kShieldEl = document.getElementById("kShield");
   const upgradeGrid = document.getElementById("upgradeGrid");
 
-  // --- Utils ---
+  const dGoldEl = document.getElementById("dGold");
+  const dSoldiersEl = document.getElementById("dSoldiers");
+  const dWaveEl = document.getElementById("dWave");
+  const dEnemyEl = document.getElementById("dEnemy");
+  const dPowerEl = document.getElementById("dPower");
+  const towerGrid = document.getElementById("towerGrid");
+  const defReport = document.getElementById("defReport");
+
+  const btnFightWave = document.getElementById("btnFightWave");
+  const btnBuyTowerSlot = document.getElementById("btnBuyTowerSlot");
+  const btnCloseDefense = document.getElementById("btnCloseDefense");
+
+  // =========================
+  // Utils
+  // =========================
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const rnd = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[(Math.random() * arr.length) | 0];
@@ -45,7 +66,7 @@
     toast.textContent = msg;
     toast.classList.add("show");
     clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => toast.classList.remove("show"), 750);
+    showToast._t = setTimeout(() => toast.classList.remove("show"), 760);
   }
 
   function burst(x, y, count = 10, lifeMs = 520) {
@@ -72,7 +93,7 @@
           return;
         }
         const px = x + vx * (dt / 1000);
-        const py = y + vy * (dt / 1000) + 120 * k * k; // gravity-ish
+        const py = y + vy * (dt / 1000) + 120 * k * k;
         p.style.left = `${px}px`;
         p.style.top = `${py}px`;
         p.style.opacity = `${1 - k}`;
@@ -86,9 +107,37 @@
     return stage.getBoundingClientRect();
   }
 
-  // --- Save / Load (Kingshot-ish progression layer) ---
-  const SAVE_KEY = "kcrowdshot_save_v1";
-  const BEST_KEY = "kcrowdshot_best_v1";
+  // =========================
+  // BigInt formatting (trillions+)
+  // =========================
+  const SUFFIX = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+
+  function formatBig(n) {
+    // n: BigInt
+    const sign = n < 0n ? "-" : "";
+    let x = n < 0n ? -n : n;
+    if (x < 1000n) return sign + x.toString();
+    const thousand = 1000n;
+    let idx = 0;
+    while (x >= 1000n && idx < SUFFIX.length - 1) {
+      x /= thousand;
+      idx++;
+    }
+    return `${sign}${x.toString()}${SUFFIX[idx]}`;
+  }
+
+  function toBigIntSafe(v) {
+    if (typeof v === "bigint") return v;
+    if (typeof v === "number") return BigInt(Math.floor(v));
+    if (typeof v === "string") return BigInt(v);
+    return 0n;
+  }
+
+  // =========================
+  // Save / Load
+  // =========================
+  const SAVE_KEY = "kcrowdshot_save_v2";
+  const BEST_KEY = "kcrowdshot_best_v2";
 
   function loadSave() {
     try {
@@ -97,48 +146,71 @@
       const o = JSON.parse(raw);
       if (!o || typeof o !== "object") return null;
       return o;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
+
   function saveSave(obj) {
     localStorage.setItem(SAVE_KEY, JSON.stringify(obj));
   }
+
   function loadBest() {
     const n = Number(localStorage.getItem(BEST_KEY) || "0");
     return Number.isFinite(n) ? n : 0;
   }
+
   function saveBest(n) {
     localStorage.setItem(BEST_KEY, String(n));
   }
 
-  // --- Progression model ---
-  // startCrowd: increases starting army
-  // gateLuck: biases toward better gates (more + and higher multipliers, fewer -)
-  // shieldCharges: start with shields that auto-block traps
-  // heroes:
-  //  - Archer: reduces enemy damage a bit
-  //  - Steward: increases gold gain
-  //  - Mage: sometimes "purifies" a risk gate into a bonus
+  // =========================
+  // Progression (Run + Defense)
+  // =========================
   const defaultProgress = {
     goldBank: 0,
+    soldiersBank: "0",
+
+    // Run upgrades
     startCrowdLvl: 0,
     luckLvl: 0,
     shieldLvl: 0,
     archerLvl: 0,
     stewardLvl: 0,
-    mageLvl: 0
+    mageLvl: 0,
+
+    // Defense
+    towerSlots: 1,
+    towerLvls: [1],
+    towerAssigned: ["0"],
+    defenseWave: 1
   };
 
   const progress = Object.assign({}, defaultProgress, loadSave() || {});
+  // normalize
+  if (!Array.isArray(progress.towerLvls)) progress.towerLvls = [1];
+  if (!Array.isArray(progress.towerAssigned)) progress.towerAssigned = ["0"];
+  if (typeof progress.soldiersBank !== "string") progress.soldiersBank = String(progress.soldiersBank || "0");
+  if (typeof progress.towerSlots !== "number") progress.towerSlots = 1;
+  if (typeof progress.defenseWave !== "number") progress.defenseWave = 1;
+
   let bestDistance = loadBest();
 
-  function startCrowdValue() {
-    return 10 + progress.startCrowdLvl * 3;
+  function soldiersBankBig() {
+    return toBigIntSafe(progress.soldiersBank || "0");
+  }
+  function setSoldiersBankBig(n) {
+    progress.soldiersBank = n.toString();
+  }
+
+  function startCrowdValueBig() {
+    return 10n + BigInt(progress.startCrowdLvl * 3);
   }
   function luckPercent() {
-    return progress.luckLvl * 4; // up to ~40% if you go hard
+    return progress.luckLvl * 4; // %
   }
   function shieldCharges() {
-    return progress.shieldLvl; // 0..?
+    return progress.shieldLvl;
   }
   function enemyMitigation() {
     return clamp(progress.archerLvl * 0.06, 0, 0.35);
@@ -149,31 +221,38 @@
   function magePurifyChance() {
     return clamp(progress.mageLvl * 0.06, 0, 0.30);
   }
+  function defenseKingdomBonus() {
+    const barracks = 1 + progress.startCrowdLvl * 0.03;
+    const archer = 1 + progress.archerLvl * 0.05;
+    return barracks * archer;
+  }
 
-  // --- Upgrade shop definitions ---
+  // =========================
+  // Kingdom upgrades shop
+  // =========================
   const upgrades = [
     {
       key: "startCrowdLvl",
       name: "Barracks",
-      desc: "Start each run with +3 crowd per level.",
+      desc: "Start each run with +3 crowd per level. Also slightly boosts defense power.",
       price: (lvl) => 70 + lvl * 90
     },
     {
       key: "luckLvl",
       name: "Gate Scribes",
-      desc: "Improves gate quality. Fewer nasty − gates, better + and × rolls.",
+      desc: "Improves gate quality. Better + and ×, fewer nasty −.",
       price: (lvl) => 90 + lvl * 120
     },
     {
       key: "shieldLvl",
       name: "Royal Shields",
-      desc: "Start with shield charges that block trap hits automatically.",
+      desc: "Start with shield charges that block ambush hits automatically.",
       price: (lvl) => 110 + lvl * 140
     },
     {
       key: "archerLvl",
       name: "Hero: Archer Captain",
-      desc: "Enemy crowd hits hurt less (damage mitigation).",
+      desc: "Enemy crowd hits hurt less. Also boosts defense power.",
       price: (lvl) => 130 + lvl * 170
     },
     {
@@ -185,16 +264,16 @@
     {
       key: "mageLvl",
       name: "Hero: Mage",
-      desc: "Chance to purify a risk gate into a bonus reward.",
+      desc: "Chance to purify a risk gate into gold/shield/soldier bonus.",
       price: (lvl) => 140 + lvl * 190
     }
   ];
 
   function renderKingdom() {
     kGoldEl.textContent = `${Math.floor(progress.goldBank)}`;
-    kStartCrowdEl.textContent = `${startCrowdValue()}`;
+    kSoldiersEl.textContent = formatBig(soldiersBankBig());
+    kStartCrowdEl.textContent = formatBig(startCrowdValueBig());
     kLuckEl.textContent = `${luckPercent()}%`;
-    kShieldEl.textContent = `${shieldCharges()}`;
 
     upgradeGrid.innerHTML = "";
     for (const u of upgrades) {
@@ -224,22 +303,343 @@
         progress[u.key] = lvl + 1;
         saveSave(progress);
         renderKingdom();
+        renderDefense();
+        updateHUD();
         showToast(`Upgraded: ${u.name} → Lv ${lvl + 1}`);
       });
       upgradeGrid.appendChild(card);
     }
   }
 
-  // --- Game state ---
+  // =========================
+  // Defense system (towers)
+  // =========================
+  function ensureTowers() {
+    const slots = clamp(progress.towerSlots | 0, 1, 6);
+    progress.towerSlots = slots;
+
+    while (progress.towerLvls.length < slots) progress.towerLvls.push(1);
+    while (progress.towerAssigned.length < slots) progress.towerAssigned.push("0");
+
+    if (progress.towerLvls.length > slots) progress.towerLvls.length = slots;
+    if (progress.towerAssigned.length > slots) progress.towerAssigned.length = slots;
+  }
+
+  function towerSlotCost() {
+    const s = progress.towerSlots;
+    return 180 + (s - 1) * 260;
+  }
+
+  function towerUpgradeCost(i) {
+    const lvl = progress.towerLvls[i] || 1;
+    return 120 + lvl * 150;
+  }
+
+  function towerMultiplier(i) {
+    const lvl = progress.towerLvls[i] || 1;
+    return 1 + (lvl - 1) * 0.22;
+  }
+
+  function assignedAt(i) {
+    return toBigIntSafe(progress.towerAssigned[i] || "0");
+  }
+  function setAssignedAt(i, n) {
+    progress.towerAssigned[i] = n.toString();
+  }
+
+  function totalAssigned() {
+    let sum = 0n;
+    for (let i = 0; i < progress.towerSlots; i++) sum += assignedAt(i);
+    return sum;
+  }
+
+  function defensePowerBig() {
+    // fixed-point multipliers for performance
+    const bonus = defenseKingdomBonus();
+    const bonusFP = BigInt(Math.floor(bonus * 1000));
+
+    let powerFP = 0n;
+    for (let i = 0; i < progress.towerSlots; i++) {
+      const a = assignedAt(i);
+      const mFP = BigInt(Math.floor(towerMultiplier(i) * 1000));
+      powerFP += a * mFP;
+    }
+    powerFP = (powerFP * bonusFP) / 1000n;
+    return powerFP / 1000n;
+  }
+
+  function nextEnemyWaveBig() {
+    const w = BigInt(progress.defenseWave || 1);
+    const bank = soldiersBankBig();
+    const distFactor = BigInt(Math.max(0, Math.floor(bestDistance))) * 30n;
+
+    const pctNum = 35n + w * 7n; // grows each wave
+    const pct = pctNum > 90n ? 90n : pctNum;
+
+    let enemy = (bank * pct) / 100n + distFactor + (w * w * 250n);
+    if (enemy < 120n) enemy = 120n;
+
+    const r = BigInt(Math.floor(rnd(92, 108)));
+    enemy = (enemy * r) / 100n;
+
+    return enemy;
+  }
+
+  function renderDefense() {
+    ensureTowers();
+
+    dGoldEl.textContent = `${Math.floor(progress.goldBank)}`;
+    dSoldiersEl.textContent = formatBig(soldiersBankBig());
+    dWaveEl.textContent = String(progress.defenseWave || 1);
+    dEnemyEl.textContent = formatBig(nextEnemyWaveBig());
+    dPowerEl.textContent = formatBig(defensePowerBig());
+
+    towerGrid.innerHTML = "";
+    for (let i = 0; i < progress.towerSlots; i++) {
+      const lvl = progress.towerLvls[i] || 1;
+      const assigned = assignedAt(i);
+      const mult = towerMultiplier(i).toFixed(2);
+      const upCost = towerUpgradeCost(i);
+
+      const t = document.createElement("div");
+      t.className = "tower";
+      t.innerHTML = `
+        <div class="tTop">
+          <div>
+            <div class="tName">Tower ${i + 1}</div>
+            <div class="tMeta">Multiplier: ×${mult}</div>
+          </div>
+          <div class="tLvl">Lv ${lvl}</div>
+        </div>
+
+        <div class="tAssign">
+          <div>
+            <div style="color:rgba(255,255,255,.70);font-weight:900;font-size:11px;">Assigned</div>
+            <div class="tAssigned" id="assigned-${i}">${formatBig(assigned)}</div>
+          </div>
+          <div class="tBtns">
+            <button class="tBtn" data-act="minus" data-i="${i}">−</button>
+            <button class="tBtn" data-act="plus" data-i="${i}">+</button>
+          </div>
+        </div>
+
+        <div class="tAssign" style="justify-content:space-between;">
+          <div>
+            <div style="color:rgba(255,255,255,.70);font-weight:900;font-size:11px;">Upgrade</div>
+            <div style="font-weight:950;color:rgba(255,211,106,.95);">Cost: ${upCost} gold</div>
+          </div>
+          <div class="tBtns">
+            <button class="tBtn" data-act="upgrade" data-i="${i}">Upgrade</button>
+          </div>
+        </div>
+      `;
+      towerGrid.appendChild(t);
+    }
+
+    btnBuyTowerSlot.disabled = progress.goldBank < towerSlotCost() || progress.towerSlots >= 6;
+
+    const freeSoldiers = soldiersBankBig() - totalAssigned();
+    defReport.textContent =
+      `Unassigned soldiers: ${formatBig(freeSoldiers < 0n ? 0n : freeSoldiers)}. ` +
+      `Assign soldiers to towers to increase power, then fight wave ${progress.defenseWave}.`;
+  }
+
+  // Tower UI events
+  towerGrid.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    const act = btn.dataset.act;
+    const i = Number(btn.dataset.i);
+
+    ensureTowers();
+
+    const bank = soldiersBankBig();
+    const assigned = assignedAt(i);
+    const total = totalAssigned();
+    const unassigned = bank - total;
+
+    const stepSmall = 50n;
+    const stepBig = 5000n;
+    const step = (bank >= 500000n) ? stepBig : stepSmall;
+
+    if (act === "plus") {
+      if (unassigned <= 0n) {
+        showToast("No unassigned soldiers.");
+        return;
+      }
+      const add = unassigned < step ? unassigned : step;
+      setAssignedAt(i, assigned + add);
+      saveSave(progress);
+      renderDefense();
+      updateHUD();
+      showToast(`Assigned +${formatBig(add)} to Tower ${i + 1}`);
+      return;
+    }
+
+    if (act === "minus") {
+      if (assigned <= 0n) return;
+      const sub = assigned < step ? assigned : step;
+      setAssignedAt(i, assigned - sub);
+      saveSave(progress);
+      renderDefense();
+      updateHUD();
+      showToast(`Removed −${formatBig(sub)} from Tower ${i + 1}`);
+      return;
+    }
+
+    if (act === "upgrade") {
+      const cost = towerUpgradeCost(i);
+      if (progress.goldBank < cost) {
+        showToast("Not enough gold.");
+        return;
+      }
+      progress.goldBank -= cost;
+      progress.towerLvls[i] = (progress.towerLvls[i] || 1) + 1;
+      saveSave(progress);
+      renderDefense();
+      updateHUD();
+      showToast(`Tower ${i + 1} upgraded!`);
+      return;
+    }
+  });
+
+  btnBuyTowerSlot.addEventListener("click", () => {
+    ensureTowers();
+    if (progress.towerSlots >= 6) {
+      showToast("Max tower slots reached.");
+      return;
+    }
+    const cost = towerSlotCost();
+    if (progress.goldBank < cost) {
+      showToast("Not enough gold.");
+      return;
+    }
+    progress.goldBank -= cost;
+    progress.towerSlots += 1;
+    ensureTowers();
+    saveSave(progress);
+    renderDefense();
+    updateHUD();
+    showToast("Bought a new tower slot.");
+  });
+
+  btnFightWave.addEventListener("click", () => {
+    ensureTowers();
+
+    const enemy = nextEnemyWaveBig();
+    const power = defensePowerBig();
+
+    if (power <= 0n) {
+      showToast("Assign soldiers to towers first.");
+      defReport.textContent = "Your defense power is zero. Assign soldiers to towers, then fight.";
+      return;
+    }
+
+    const bank = soldiersBankBig();
+    const total = totalAssigned();
+
+    const goldBase = 120 + Math.floor(progress.defenseWave * 55);
+    const goldGain = Math.floor(goldBase * goldBonusMult());
+
+    if (power >= enemy) {
+      // Victory casualties
+      const casualtyPct = BigInt(Math.floor(rnd(8, 18)));
+      let casualties = (enemy * casualtyPct) / 100n;
+      if (casualties > total) casualties = total;
+
+      // proportional removal across towers
+      let remainingCas = casualties;
+      for (let i = 0; i < progress.towerSlots; i++) {
+        if (remainingCas <= 0n) break;
+        const a = assignedAt(i);
+        if (a <= 0n) continue;
+
+        const take = (a * casualties) / (total === 0n ? 1n : total);
+        const actual = take > a ? a : take;
+        setAssignedAt(i, a - actual);
+        remainingCas -= actual;
+      }
+      // rounding remainder
+      if (remainingCas > 0n) {
+        for (let i = 0; i < progress.towerSlots && remainingCas > 0n; i++) {
+          const a = assignedAt(i);
+          if (a <= 0n) continue;
+          const actual = a < remainingCas ? a : remainingCas;
+          setAssignedAt(i, a - actual);
+          remainingCas -= actual;
+        }
+      }
+
+      progress.goldBank += goldGain;
+      const soldierReward = (enemy / 40n) + BigInt(30 + Math.floor(rnd(0, 70)));
+      setSoldiersBankBig(bank + soldierReward);
+
+      progress.defenseWave += 1;
+
+      saveSave(progress);
+      renderDefense();
+      updateHUD();
+
+      defReport.innerHTML =
+        `<b>Victory.</b> Enemy ${formatBig(enemy)} defeated. ` +
+        `Casualties: ${formatBig(casualties)}. ` +
+        `Rewards: +${goldGain} gold, +${formatBig(soldierReward)} soldiers.`;
+      showToast("Victory!");
+      return;
+    } else {
+      // Defeat: lose 10% of assigned and pay repairs
+      const lose = total / 10n;
+      const repair = Math.min(Math.floor(progress.goldBank), 90 + progress.defenseWave * 35);
+
+      let remainingLose = lose;
+      for (let i = 0; i < progress.towerSlots; i++) {
+        if (remainingLose <= 0n) break;
+        const a = assignedAt(i);
+        if (a <= 0n) continue;
+
+        const take = (a * lose) / (total === 0n ? 1n : total);
+        const actual = take > a ? a : take;
+        setAssignedAt(i, a - actual);
+        remainingLose -= actual;
+      }
+      if (remainingLose > 0n) {
+        for (let i = 0; i < progress.towerSlots && remainingLose > 0n; i++) {
+          const a = assignedAt(i);
+          if (a <= 0n) continue;
+          const actual = a < remainingLose ? a : remainingLose;
+          setAssignedAt(i, a - actual);
+          remainingLose -= actual;
+        }
+      }
+
+      progress.goldBank -= repair;
+      saveSave(progress);
+      renderDefense();
+      updateHUD();
+
+      defReport.innerHTML =
+        `<b>Defeat.</b> Enemy ${formatBig(enemy)} overran the walls. ` +
+        `You lost ${formatBig(lose)} soldiers and paid ${repair} gold in repairs. ` +
+        `Increase tower levels and assign more soldiers.`;
+      showToast("Defeat.");
+      return;
+    }
+  });
+
+  // =========================
+  // Runner game state
+  // =========================
   const game = {
     running: false,
     paused: false,
     practice: false,
 
-    lane: 0, // 0 left, 1 right
-    crowd: startCrowdValue(),
+    lane: 0,
+    crowd: 10n,
     goldRun: 0,
-    shields: shieldCharges(),
+    soldiersRun: 0n,
+    shields: 0,
 
     dist: 0,
     speed: 330,
@@ -247,47 +647,16 @@
 
     time: 0,
     nextSpawn: 0,
-    rowId: 1,
-    entities: [], // {kind, y, lane, el, data, hit}
+    entities: [],
 
-    // camera shake
     shakeT: 0,
     shakeMag: 0
   };
 
-  function resetRun(practice = false) {
-    // clear entities
-    for (const e of game.entities) e.el.remove();
-    game.entities.length = 0;
-
-    game.practice = practice;
-    game.running = false;
-    game.paused = false;
-
-    game.lane = 0;
-    playerEl.classList.remove("right");
-
-    game.crowd = startCrowdValue();
-    game.goldRun = 0;
-    game.shields = shieldCharges();
-
-    game.dist = 0;
-    game.baseSpeed = practice ? 260 : 330;
-    game.speed = game.baseSpeed;
-
-    game.time = 0;
-    game.nextSpawn = 0.35;
-
-    game.shakeT = 0;
-    game.shakeMag = 0;
-
-    updateHUD();
-    playerNumEl.textContent = String(game.crowd);
-  }
-
   function updateHUD() {
-    hudCrowd.textContent = String(Math.max(0, Math.floor(game.crowd)));
+    hudCrowd.textContent = formatBig(game.crowd);
     hudGold.textContent = String(Math.floor(progress.goldBank));
+    hudSoldiers.textContent = formatBig(soldiersBankBig());
     hudDist.textContent = `${Math.floor(game.dist)}m`;
     hudBest.textContent = `${Math.floor(bestDistance)}m`;
   }
@@ -305,18 +674,21 @@
     game.shakeMag = Math.max(game.shakeMag, mag);
   }
 
-  // --- Spawning logic (crowd multiplier runner core) ---
-  // Gate row: two choices (left + something, right + something). You collide with the lane you chose.
-  // Single entities: enemy crowd (fight), trap (lose crowd unless shield), coin (gain gold), shield pickup (gain shields).
+  // =========================
+  // Entities: rows and singles
+  // =========================
   function makeRow(y, leftCard, rightCard) {
     const row = document.createElement("div");
     row.className = "entityRow";
+
     const l = document.createElement("div");
     const r = document.createElement("div");
     l.className = `card ${leftCard.cls}`;
     r.className = `card ${rightCard.cls}`;
+
     l.innerHTML = `<div class="txt"><div class="big">${leftCard.big}</div><div class="small">${leftCard.small}</div></div>`;
     r.innerHTML = `<div class="txt"><div class="big">${rightCard.big}</div><div class="small">${rightCard.small}</div></div>`;
+
     row.appendChild(l);
     row.appendChild(r);
     stage.appendChild(row);
@@ -327,11 +699,12 @@
   function makeSingle(y, lane, card) {
     const row = document.createElement("div");
     row.className = "entityRow";
+
     const left = document.createElement("div");
     const right = document.createElement("div");
     left.className = "single";
     right.className = "single";
-    // Only show the active lane; the other is an empty ghost to keep alignment.
+
     if (lane === 0) {
       left.className = `single ${card.cls}`;
       left.innerHTML = `<div class="txt"><div class="big">${card.big}</div><div class="small">${card.small}</div></div>`;
@@ -341,6 +714,7 @@
       right.innerHTML = `<div class="txt"><div class="big">${card.big}</div><div class="small">${card.small}</div></div>`;
       left.style.opacity = "0";
     }
+
     row.appendChild(left);
     row.appendChild(right);
     stage.appendChild(row);
@@ -359,18 +733,18 @@
     return items[items.length - 1].v;
   }
 
+  // =========================
+  // Gate rolls
+  // =========================
   function rollGate(t) {
-    // t ~ 0..1..2.. (progress)
-    // Gate quality improves with luck; risk chance rises with time but luck fights it.
     const luck = luckPercent() / 100;
 
     const baseRisk = clamp(0.10 + 0.12 * t, 0.10, 0.36);
     const risk = clamp(baseRisk * (1 - 0.85 * luck), 0.05, 0.40);
 
-    const multBias = clamp(0.20 + 0.25 * t, 0.20, 0.55);
+    const multBias = clamp(0.20 + 0.25 * t, 0.20, 0.60);
     const plusBias = clamp(0.70 - 0.20 * t, 0.35, 0.75);
 
-    // Normalize among plus/mult/risk
     const wRisk = risk;
     const wMult = (1 - wRisk) * multBias;
     const wPlus = (1 - wRisk) * plusBias;
@@ -384,82 +758,81 @@
 
     if (kind === "plus") {
       const base = 8 + Math.floor(6 * t);
-      const spread = 10 + Math.floor(10 * t);
+      const spread = 10 + Math.floor(12 * t);
       const n = Math.floor(base + rnd(0, spread) * (1 + 0.6 * luck));
       return { type: "plus", n };
     }
     if (kind === "mult") {
-      // Keep multipliers sane but exciting; luck nudges up.
-      const pool = t < 0.6 ? [2,2,3,3,4] : t < 1.2 ? [2,3,3,4,4,5] : [3,4,4,5,5,6];
+      const pool =
+        t < 0.6 ? [2, 2, 3, 3, 4] :
+        t < 1.2 ? [2, 3, 3, 4, 4, 5] :
+                  [3, 4, 4, 5, 5, 6, 7];
       let m = pick(pool);
       if (Math.random() < luck * 0.55) m += 1;
       m = clamp(m, 2, 8);
       return { type: "mult", m };
     }
-    // risk
     const base = 6 + Math.floor(6 * t);
-    const spread = 10 + Math.floor(10 * t);
+    const spread = 10 + Math.floor(12 * t);
     const n = Math.floor(base + rnd(0, spread));
     return { type: "risk", n };
   }
 
   function gateCardFromRoll(roll) {
-    if (roll.type === "plus") {
-      return { cls: "plus", big: `+${roll.n}`, small: "Recruit" , roll };
-    }
-    if (roll.type === "mult") {
-      return { cls: "mult", big: `×${roll.m}`, small: "Rally" , roll };
-    }
-    return { cls: "risk", big: `−${roll.n}`, small: "Ambush" , roll };
+    if (roll.type === "plus") return { cls: "plus", big: `+${roll.n}`, small: "Recruit", roll };
+    if (roll.type === "mult") return { cls: "mult", big: `×${roll.m}`, small: "Rally", roll };
+    return { cls: "risk", big: `−${roll.n}`, small: "Ambush", roll };
   }
 
   function maybePurify(card) {
     if (card.roll?.type !== "risk") return card;
     if (Math.random() < magePurifyChance()) {
-      // Turn risk into a gold/shield/bonus gate.
       const choice = weightedPick([
         { v: "gold", w: 0.55 },
-        { v: "shield", w: 0.30 },
-        { v: "bonus", w: 0.15 }
+        { v: "shield", w: 0.25 },
+        { v: "sold", w: 0.20 }
       ]);
       if (choice === "gold") {
-        const g = 25 + Math.floor(rnd(0, 40));
+        const g = 35 + Math.floor(rnd(0, 80));
         return { cls: "gold", big: `+${g}`, small: "Treasury", roll: { type: "gold", g } };
       }
       if (choice === "shield") {
         return { cls: "shield", big: `+1`, small: "Shield", roll: { type: "shield", s: 1 } };
       }
-      const b = 12 + Math.floor(rnd(0, 22));
-      return { cls: "gold", big: `+${b}`, small: "Bounty", roll: { type: "gold", g: b } };
+      const s = 60 + Math.floor(rnd(0, 140));
+      return { cls: "sold", big: `+${s}`, small: "Draft", roll: { type: "sold", s } };
     }
     return card;
   }
 
+  // =========================
+  // Runner spawning
+  // =========================
   function spawn(t) {
-    // Mix gate rows + single events (enemy, trap, coin, shield).
     const luck = luckPercent() / 100;
 
-    const enemyChance = clamp(0.18 + 0.10 * t, 0.18, 0.42);
-    const coinChance = clamp(0.16 + 0.06 * t, 0.16, 0.30);
-    const shieldChance = clamp(0.05 + 0.02 * t + 0.03 * luck, 0.05, 0.16);
-    const rowChance = 1 - clamp(enemyChance + coinChance + shieldChance, 0.30, 0.72);
+    const enemyChance = clamp(0.18 + 0.12 * t, 0.18, 0.48);
+    const coinChance  = clamp(0.15 + 0.07 * t, 0.15, 0.30);
+    const soldChance  = clamp(0.10 + 0.05 * t, 0.10, 0.26);
+    const shieldChance= clamp(0.05 + 0.02 * t + 0.03 * luck, 0.05, 0.16);
+    const rowChance = 1 - clamp(enemyChance + coinChance + soldChance + shieldChance, 0.35, 0.78);
 
     const kind = weightedPick([
       { v: "row", w: rowChance },
       { v: "enemy", w: enemyChance },
       { v: "coin", w: coinChance },
+      { v: "sold", w: soldChance },
       { v: "shield", w: shieldChance }
     ]);
 
     const y = -140;
+    const lane = Math.random() < 0.5 ? 0 : 1;
 
     if (kind === "row") {
       let left = gateCardFromRoll(rollGate(t));
       let right = gateCardFromRoll(rollGate(t));
 
-      // Luck can tilt the "offer" to feel like real runners (one is often clearly better).
       if (Math.random() < 0.35 + 0.25 * luck) {
-        // Slightly buff one side
         const buffLeft = Math.random() < 0.5;
         const target = buffLeft ? left : right;
         if (target.roll.type === "plus") target.roll.n = Math.floor(target.roll.n * (1.18 + 0.25 * luck));
@@ -473,27 +846,21 @@
       left = maybePurify(left);
       right = maybePurify(right);
 
-      // Rare: a pure gold gate appears as a “temptation”
+      // Temptation: gold or soldiers gate
       if (Math.random() < (0.06 + 0.06 * luck)) {
         const side = Math.random() < 0.5 ? "left" : "right";
-        const g = 30 + Math.floor(rnd(0, 60) * (1 + 0.4 * t));
-        const goldGate = { cls: "gold", big: `+${g}`, small: "Loot", roll: { type: "gold", g } };
-        if (side === "left") left = goldGate; else right = goldGate;
+        if (Math.random() < 0.55) {
+          const g = 40 + Math.floor(rnd(0, 90) * (1 + 0.4 * t));
+          const goldGate = { cls: "gold", big: `+${g}`, small: "Loot", roll: { type: "gold", g } };
+          if (side === "left") left = goldGate; else right = goldGate;
+        } else {
+          const s = 70 + Math.floor(rnd(0, 170) * (1 + 0.35 * t));
+          const soldGate = { cls: "sold", big: `+${s}`, small: "Draft", roll: { type: "sold", s } };
+          if (side === "left") left = soldGate; else right = soldGate;
+        }
       }
 
       game.entities.push(makeRow(y, left, right));
-      return;
-    }
-
-    const lane = Math.random() < 0.5 ? 0 : 1;
-
-    if (kind === "enemy") {
-      // Enemy scales with distance and current crowd (keeps it spicy).
-      const base = 8 + Math.floor(10 * t);
-      const swing = 14 + Math.floor(16 * t);
-      const threat = Math.floor(base + rnd(0, swing));
-      const card = { cls: "enemy", big: `ENEMY ${threat}`, small: "Clash", threat };
-      game.entities.push(makeSingle(y, lane, card));
       return;
     }
 
@@ -504,12 +871,46 @@
       return;
     }
 
-    // shield pickup
-    const card = { cls: "shield", big: `+1`, small: "Shield", s: 1 };
+    if (kind === "sold") {
+      const s = Math.floor((30 + rnd(0, 60)) * (1 + 0.40 * t));
+      const card = { cls: "sold", big: `+${s}`, small: "Soldiers", s };
+      game.entities.push(makeSingle(y, lane, card));
+      return;
+    }
+
+    if (kind === "shield") {
+      const card = { cls: "shield", big: `+1`, small: "Shield", s: 1 };
+      game.entities.push(makeSingle(y, lane, card));
+      return;
+    }
+
+    // Enemy clash scaling: scales with you, spikes late-game
+    const crowd = game.crowd;
+    const tNum = BigInt(Math.floor(clamp(t, 0, 2.6) * 100)); // 0..260
+    let threat = 12n + BigInt(Math.floor(10 * t)) * 6n;
+
+    const basePct = 25n + (tNum * 3n) / 4n;  // grows with t
+    const randPct = BigInt(Math.floor(rnd(80, 125)));
+    let pct = (basePct * randPct) / 100n;
+    pct = clamp(Number(pct), 18, 140); // clamp as number then back
+    const pctBig = BigInt(pct);
+
+    threat += (crowd * pctBig) / 100n;
+
+    if (Math.random() < 0.10 + t * 0.10) {
+      const spike = BigInt(Math.floor(rnd(120, 220)));
+      threat = (threat * spike) / 100n;
+    }
+
+    if (crowd > 1000000n && threat < crowd / 12n) threat = crowd / 12n;
+
+    const card = { cls: "enemy", big: `ENEMY ${formatBig(threat)}`, small: "Clash", threat };
     game.entities.push(makeSingle(y, lane, card));
   }
 
-  // --- Resolution / effects ---
+  // =========================
+  // Apply effects
+  // =========================
   function applyGate(card) {
     const r = card.roll;
 
@@ -523,6 +924,16 @@
       return;
     }
 
+    if (r?.type === "sold") {
+      const add = BigInt(r.s || 0);
+      setSoldiersBankBig(soldiersBankBig() + add);
+      game.soldiersRun += add;
+      saveSave(progress);
+      showToast(`Draft +${formatBig(add)} soldiers`);
+      shake(120, 3);
+      return;
+    }
+
     if (r?.type === "shield") {
       game.shields += (r.s || 1);
       showToast(`Shield +1 (now ${game.shields})`);
@@ -531,28 +942,27 @@
     }
 
     if (r?.type === "plus") {
-      game.crowd += r.n;
+      game.crowd += BigInt(r.n);
       showToast(`Recruit +${r.n}`);
       return;
     }
 
     if (r?.type === "mult") {
       const before = game.crowd;
-      game.crowd = Math.floor(game.crowd * r.m);
+      game.crowd = game.crowd * BigInt(r.m);
       showToast(`Rally ×${r.m}`);
-      if (game.crowd - before >= 40) shake(160, 4);
+      if (game.crowd - before >= 40n) shake(160, 4);
       return;
     }
 
     if (r?.type === "risk") {
-      // If we have shields, auto-block the trap.
       if (game.shields > 0) {
         game.shields -= 1;
-        showToast(`Trap blocked (shields ${game.shields})`);
+        showToast(`Ambush blocked (shields ${game.shields})`);
         shake(130, 4);
         return;
       }
-      game.crowd -= r.n;
+      game.crowd -= BigInt(r.n);
       showToast(`Ambush −${r.n}`);
       shake(220, 8);
       return;
@@ -564,28 +974,35 @@
 
     if (c.cls.includes("enemy")) {
       const mitigation = enemyMitigation();
-      const effectiveThreat = Math.floor(c.threat * (1 - mitigation));
+      const threat = toBigIntSafe(c.threat);
 
-      if (game.crowd > effectiveThreat) {
-        // Win: lose some, gain some; net benefit if you’re stronger.
-        const loss = Math.floor(effectiveThreat * (0.45 + rnd(0, 0.15)));
+      const mitFP = BigInt(Math.floor((1 - mitigation) * 1000));
+      const effective = (threat * mitFP) / 1000n;
+
+      if (game.crowd > effective) {
+        const lossPct = BigInt(Math.floor(rnd(20, 45)));
+        const loss = (effective * lossPct) / 100n;
+
         game.crowd -= loss;
 
-        const baseGold = 25 + Math.floor(rnd(0, 30)) + Math.floor(game.dist * 0.03);
-        const gain = Math.floor(baseGold * goldBonusMult());
+        const baseGold = 40 + Math.floor(rnd(0, 50)) + Math.floor(game.dist * 0.05);
+        const gainGold = Math.floor(baseGold * goldBonusMult());
+        progress.goldBank += gainGold;
+        game.goldRun += gainGold;
 
-        progress.goldBank += gain;
-        game.goldRun += gain;
+        const soldierGain = (effective / 80n) + BigInt(25 + Math.floor(rnd(0, 90)));
+        setSoldiersBankBig(soldiersBankBig() + soldierGain);
+        game.soldiersRun += soldierGain;
+
         saveSave(progress);
 
-        showToast(`Won clash! −${loss} crowd, +${gain} gold`);
-        shake(160, 5);
+        showToast(`Won clash! −${formatBig(loss)} crowd, +${gainGold} gold, +${formatBig(soldierGain)} soldiers`);
+        shake(180, 6);
         return;
       }
 
-      // Lose = game over
-      game.crowd = 0;
-      showToast(`Defeated by enemy ${effectiveThreat}`);
+      game.crowd = 0n;
+      showToast(`Defeated by enemy ${formatBig(effective)}`);
       shake(360, 12);
       return;
     }
@@ -599,6 +1016,15 @@
       return;
     }
 
+    if (c.cls.includes("sold")) {
+      const add = BigInt(c.s || 0);
+      setSoldiersBankBig(soldiersBankBig() + add);
+      game.soldiersRun += add;
+      saveSave(progress);
+      showToast(`Soldiers +${formatBig(add)}`);
+      return;
+    }
+
     if (c.cls.includes("shield")) {
       game.shields += (c.s || 1);
       showToast(`Shield +1 (now ${game.shields})`);
@@ -606,7 +1032,9 @@
     }
   }
 
-  // --- Game loop ---
+  // =========================
+  // Runner loop
+  // =========================
   let lastT = 0;
 
   function tick(t) {
@@ -617,21 +1045,20 @@
     const dt = Math.min(0.033, (t - lastT) / 1000);
     lastT = t;
 
-    // speed ramps with distance (runner feel)
     game.time += dt;
-    const prog = game.dist / 600; // progression factor
-    game.speed = game.baseSpeed + prog * 18 + (game.practice ? 0 : prog * 7);
 
-    game.dist += game.speed * dt * 0.06; // convert px-ish to meters-ish
+    const prog = game.dist / 600;
+    game.speed = game.baseSpeed + prog * 18 + (game.practice ? 0 : prog * 8);
+
+    game.dist += game.speed * dt * 0.06;
+
     if (game.dist > bestDistance) {
       bestDistance = game.dist;
       saveBest(bestDistance);
     }
 
-    // camera shake
     if (game.shakeT > 0) {
       game.shakeT -= dt;
-      const r = stageRect();
       const mag = game.shakeMag * (game.shakeT / 0.25);
       const ox = rnd(-mag, mag);
       const oy = rnd(-mag, mag);
@@ -642,36 +1069,28 @@
       }
     }
 
-    // spawn
     game.nextSpawn -= dt;
     if (game.nextSpawn <= 0) {
-      const tNorm = clamp(game.dist / 450, 0, 2.2);
+      const tNorm = clamp(game.dist / 450, 0, 2.6);
       spawn(tNorm);
 
-      // spawn cadence gets tighter as you go
       const base = game.practice ? 1.05 : 0.92;
-      const tight = clamp(0.22 * (game.dist / 700), 0, 0.42);
+      const tight = clamp(0.22 * (game.dist / 700), 0, 0.45);
       game.nextSpawn = base - tight + rnd(0, 0.18);
     }
 
-    // move entities
-    const playerY = stage.clientHeight - 210; // collision band
+    const playerY = stage.clientHeight - 210;
     const killY = stage.clientHeight + 180;
 
     for (const e of game.entities) {
       e.y += game.speed * dt;
-
-      // position
       e.el.style.transform = `translateY(${e.y}px)`;
 
-      // collision check
       if (!e.hit && e.y >= playerY && e.y <= playerY + 40) {
-        // determine chosen lane and apply
         if (e.kind === "row") {
           const card = game.lane === 0 ? e.data.leftCard : e.data.rightCard;
           e.hit = true;
 
-          // FX
           const r = stageRect();
           const x = r.width * (game.lane === 0 ? 0.27 : 0.73);
           const y = playerY + 20;
@@ -691,20 +1110,16 @@
           }
         }
 
-        // update player number
-        game.crowd = Math.floor(game.crowd);
-        playerNumEl.textContent = String(Math.max(0, game.crowd));
+        playerNumEl.textContent = formatBig(game.crowd < 0n ? 0n : game.crowd);
         updateHUD();
 
-        // death check
-        if (game.crowd <= 0) {
+        if (game.crowd <= 0n) {
           endRun();
           return;
         }
       }
     }
 
-    // cleanup
     for (let i = game.entities.length - 1; i >= 0; i--) {
       if (game.entities[i].y > killY) {
         game.entities[i].el.remove();
@@ -712,7 +1127,7 @@
       }
     }
 
-    // passive gold drip from distance (tiny, but feels good)
+    // tiny gold drip
     if (!game.practice) {
       const drip = dt * (0.22 + game.dist * 0.00012);
       progress.goldBank += drip * goldBonusMult();
@@ -722,39 +1137,76 @@
     updateHUD();
   }
 
+  function cleanupEntities() {
+    for (const e of game.entities) e.el.remove();
+    game.entities.length = 0;
+  }
+
+  function resetRun(practice = false) {
+    cleanupEntities();
+
+    game.practice = practice;
+    game.running = false;
+    game.paused = false;
+
+    game.lane = 0;
+    playerEl.classList.remove("right");
+
+    game.crowd = startCrowdValueBig();
+    game.goldRun = 0;
+    game.soldiersRun = 0n;
+    game.shields = shieldCharges();
+
+    game.dist = 0;
+    game.baseSpeed = practice ? 260 : 330;
+    game.speed = game.baseSpeed;
+
+    game.time = 0;
+    game.nextSpawn = 0.35;
+
+    game.shakeT = 0;
+    game.shakeMag = 0;
+
+    updateHUD();
+    playerNumEl.textContent = formatBig(game.crowd);
+  }
+
   function endRun() {
     game.running = false;
     game.paused = false;
 
-    // stop shaking transform (if any)
     stage.style.transform = "";
     lastT = 0;
 
-    // overlays
     overlayGameOver.classList.remove("hidden");
     overlayStart.classList.add("hidden");
     overlayKingdom.classList.add("hidden");
+    overlayDefense.classList.add("hidden");
 
     const dist = Math.floor(game.dist);
-    const earned = Math.floor(game.goldRun);
+    const earnedGold = Math.floor(game.goldRun);
+    const earnedSold = game.soldiersRun;
 
     summaryEl.innerHTML = `
       <div><b>Distance:</b> ${dist}m</div>
-      <div><b>Gold earned this run:</b> ${earned}</div>
+      <div><b>Gold earned (run):</b> ${earnedGold}</div>
+      <div><b>Soldiers earned (run):</b> ${formatBig(earnedSold)}</div>
       <div><b>Best distance:</b> ${Math.floor(bestDistance)}m</div>
-      <div><b>Tip:</b> Build shields if traps are ending your runs; build Gate Luck if choices feel cursed.</div>
+      <div><b>Next step:</b> Use <b>Defense</b> to buy/upgrade towers and place soldiers to beat waves.</div>
     `;
 
     const tips = [
-      "If you see a big × gate and you’re already stacked, take it and become a math warlord.",
-      "If you’re low crowd, take +N to stabilize before chasing multipliers.",
-      "Shields are the anti-ambush insurance policy your future self will thank you for.",
-      "Gate Luck makes the game feel less like gambling and more like strategy."
+      "If clashes feel brutal late-game, it means the scaling is working. Use Shields + Defense towers.",
+      "Draft gates and enemy wins snowball your soldier bank. Towers turn that bank into real power.",
+      "If you’re huge, multipliers are king. If you’re fragile, stabilize with +N before risking ×.",
+      "Defense tip: upgrade tower levels first, then fill with soldiers for the biggest power jumps."
     ];
     deathTipEl.textContent = pick(tips);
   }
 
-  // --- Input (swipe + keys) ---
+  // =========================
+  // Input: swipe + keys
+  // =========================
   let touchActive = false;
   let touchX0 = 0;
   let touchY0 = 0;
@@ -787,19 +1239,23 @@
     if (k === "r") hardRestart();
   });
 
-  // --- UI controls ---
+  // =========================
+  // UI controls
+  // =========================
   function startRun(practice = false) {
     resetRun(practice);
+
     overlayStart.classList.add("hidden");
     overlayGameOver.classList.add("hidden");
     overlayKingdom.classList.add("hidden");
+    overlayDefense.classList.add("hidden");
 
     game.running = true;
     game.paused = false;
 
     showToast(practice ? "Practice run" : "Run started");
     updateHUD();
-    playerNumEl.textContent = String(game.crowd);
+    playerNumEl.textContent = formatBig(game.crowd);
 
     lastT = 0;
   }
@@ -811,30 +1267,47 @@
   }
 
   function openKingdom() {
-    // pause the run if running
     if (game.running) game.paused = true;
     renderKingdom();
     overlayKingdom.classList.remove("hidden");
     overlayStart.classList.add("hidden");
     overlayGameOver.classList.add("hidden");
+    overlayDefense.classList.add("hidden");
   }
 
   function closeKingdom() {
     overlayKingdom.classList.add("hidden");
-    if (!game.running) {
-      overlayStart.classList.remove("hidden");
-    } else {
+    if (!game.running) overlayStart.classList.remove("hidden");
+    else {
+      game.paused = false;
+      showToast("Back to run");
+    }
+  }
+
+  function openDefense() {
+    if (game.running) game.paused = true;
+    renderDefense();
+    overlayDefense.classList.remove("hidden");
+    overlayStart.classList.add("hidden");
+    overlayGameOver.classList.add("hidden");
+    overlayKingdom.classList.add("hidden");
+  }
+
+  function closeDefense() {
+    overlayDefense.classList.add("hidden");
+    if (!game.running) overlayStart.classList.remove("hidden");
+    else {
       game.paused = false;
       showToast("Back to run");
     }
   }
 
   function hardRestart() {
-    // keep progression, reset run
     resetRun(false);
     overlayStart.classList.remove("hidden");
     overlayGameOver.classList.add("hidden");
     overlayKingdom.classList.add("hidden");
+    overlayDefense.classList.add("hidden");
     game.running = false;
     game.paused = false;
     showToast("Restarted");
@@ -846,29 +1319,40 @@
   btnRestart.addEventListener("click", hardRestart);
 
   btnKingdom.addEventListener("click", openKingdom);
+  btnDefense.addEventListener("click", openDefense);
   btnCloseKingdom.addEventListener("click", closeKingdom);
+  btnCloseDefense.addEventListener("click", closeDefense);
+
+  btnOpenDefenseFromStart?.addEventListener("click", openDefense);
 
   btnRunAgain.addEventListener("click", () => startRun(false));
   btnGoKingdom.addEventListener("click", openKingdom);
+  btnGoDefense.addEventListener("click", openDefense);
 
   btnResetProgress.addEventListener("click", () => {
-    Object.assign(progress, defaultProgress);
+    const keepBest = bestDistance; // keep best distance, but reset economy/progression
+    Object.assign(progress, JSON.parse(JSON.stringify(defaultProgress)));
+    bestDistance = keepBest;
     saveSave(progress);
-    bestDistance = 0;
-    saveBest(0);
     renderKingdom();
+    renderDefense();
     updateHUD();
     showToast("Progress reset");
   });
 
-  // --- Boot ---
+  // =========================
+  // Boot
+  // =========================
   hudBest.textContent = `${Math.floor(bestDistance)}m`;
   renderKingdom();
+  renderDefense();
   resetRun(false);
+
   overlayStart.classList.remove("hidden");
   overlayGameOver.classList.add("hidden");
   overlayKingdom.classList.add("hidden");
-  updateHUD();
+  overlayDefense.classList.add("hidden");
 
+  updateHUD();
   requestAnimationFrame(tick);
 })();
