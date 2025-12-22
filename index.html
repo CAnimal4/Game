@@ -8,63 +8,116 @@
 </head>
 <body>
   <div id="app">
-    <div id="stage">
+    <div id="stage" aria-label="KingCrowdShot">
       <div id="fx"></div>
 
-      <div id="hud">
-        <div class="hudRow">
-          <div class="pill">Crowd: <b id="hudCrowd">10</b></div>
-          <div class="pill">Gold: <b id="hudGold">0</b></div>
-          <div class="pill">Soldiers: <b id="hudSoldiers">0</b></div>
+      <!-- HUD -->
+      <header id="hud" class="ui">
+        <div class="hudTop">
+          <div class="statPill"><span class="k">Crowd</span><b id="hudCrowd">10</b></div>
+          <div class="statPill"><span class="k">Gold</span><b id="hudGold">0</b></div>
+          <div class="statPill"><span class="k">Soldiers</span><b id="hudSoldiers">0</b></div>
         </div>
-        <div class="hudRow">
-          <div class="pill">Dist: <b id="hudDist">0m</b></div>
-          <div class="pill">Best: <b id="hudBest">0m</b></div>
-        </div>
+        <div class="hudBottom">
+          <div class="statPill small"><span class="k">Dist</span><b id="hudDist">0m</b></div>
+          <div class="statPill small"><span class="k">Best</span><b id="hudBest">0m</b></div>
 
-        <div class="hudButtons">
-          <button id="btnPause" class="btn">Pause</button>
-          <button id="btnRestart" class="btn">Restart</button>
-          <button id="btnKingdom" class="btn">Kingdom</button>
-          <button id="btnDefense" class="btn">Defense</button>
+          <div class="hudBtns">
+            <button id="btnPause" class="btn">Pause</button>
+            <button id="btnRestart" class="btn">Restart</button>
+            <button id="btnKingdom" class="btn">Kingdom</button>
+            <button id="btnDefense" class="btn">Defense</button>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div id="player">
-        <div class="avatar"></div>
+      <!-- Player -->
+      <div id="player" aria-label="Player">
+        <div class="avatar">
+          <div class="helm"></div>
+          <div class="crest"></div>
+        </div>
         <div id="playerNum">10</div>
       </div>
 
       <!-- Start Overlay -->
       <div id="overlayStart" class="overlay">
-        <div class="panel">
-          <h1>KingCrowdShot</h1>
-          <p class="sub">Swipe left/right to pick gates. Build your kingdom between runs.</p>
+        <div class="panel panelScroll">
+          <div class="brand">
+            <div class="logoMark"></div>
+            <div>
+              <h1>KingCrowdShot</h1>
+              <p class="sub">Swipe left/right to choose gates. Win clashes to loot gold and draft soldiers. Build upgrades and defend between runs.</p>
+            </div>
+          </div>
+
           <div class="row">
             <button id="btnPlay" class="btn primary">Play</button>
             <button id="btnPractice" class="btn">Practice</button>
           </div>
-          <button id="btnOpenDefenseFromStart" class="btn ghost">Go to Defense</button>
-          <p class="tiny">Tip: Tap anywhere to start if buttons are being stubborn.</p>
+
+          <div class="row">
+            <button id="btnOpenDefenseFromStart" class="btn ghost">Open Defense</button>
+          </div>
+
+          <div class="tips">
+            <div class="tip"><b>Controls:</b> swipe or use ← / → on desktop.</div>
+            <div class="tip"><b>Strategy:</b> stabilize with <span class="chip plus">+ Recruit</span> before chasing <span class="chip mult">× Rally</span>.</div>
+            <div class="tip"><b>Meta:</b> spend gold in <b>Kingdom</b>, then place soldiers on towers in <b>Defense</b>.</div>
+          </div>
+
+          <p class="tiny">If your device tries to scroll, don’t worry—this build locks the page and uses internal panels instead.</p>
         </div>
       </div>
 
       <!-- Kingdom Overlay -->
       <div id="overlayKingdom" class="overlay hidden">
-        <div class="panel wide">
+        <div class="panel panelScroll wide kingdom">
           <div class="panelTop">
-            <h2>Kingdom</h2>
+            <div>
+              <h2>Kingdom</h2>
+              <p class="sub">Upgrade your realm. These bonuses apply to every run.</p>
+            </div>
             <button id="btnCloseKingdom" class="btn small">Close</button>
           </div>
 
-          <div class="statsGrid">
-            <div class="stat">Gold: <b id="kGold">0</b></div>
-            <div class="stat">Soldiers: <b id="kSoldiers">0</b></div>
-            <div class="stat">Start Crowd: <b id="kStartCrowd">10</b></div>
-            <div class="stat">Luck: <b id="kLuck">0%</b></div>
+          <div class="kingdomStats">
+            <div class="kCard">
+              <div class="kIcon gold"></div>
+              <div class="kMeta">
+                <div class="kLabel">Gold</div>
+                <div class="kVal" id="kGold">0</div>
+              </div>
+            </div>
+            <div class="kCard">
+              <div class="kIcon sold"></div>
+              <div class="kMeta">
+                <div class="kLabel">Soldiers</div>
+                <div class="kVal" id="kSoldiers">0</div>
+              </div>
+            </div>
+            <div class="kCard">
+              <div class="kIcon plus"></div>
+              <div class="kMeta">
+                <div class="kLabel">Start Crowd</div>
+                <div class="kVal" id="kStartCrowd">10</div>
+              </div>
+            </div>
+            <div class="kCard">
+              <div class="kIcon mult"></div>
+              <div class="kMeta">
+                <div class="kLabel">Gate Luck</div>
+                <div class="kVal" id="kLuck">0%</div>
+              </div>
+            </div>
           </div>
 
-          <div id="upgradeGrid" class="grid"></div>
+          <div class="sectionHeader">
+            <h3>Upgrades</h3>
+            <div class="muted">Tap an upgrade to buy the next level.</div>
+          </div>
+
+          <div id="upgradeGrid" class="grid upgrades"></div>
 
           <div class="panelBottom">
             <button id="btnResetProgress" class="btn danger">Reset Progress</button>
@@ -74,33 +127,75 @@
 
       <!-- Defense Overlay -->
       <div id="overlayDefense" class="overlay hidden">
-        <div class="panel wide">
+        <div class="panel panelScroll wide defense">
           <div class="panelTop">
-            <h2>Defense</h2>
+            <div>
+              <h2>Defense</h2>
+              <p class="sub">Assign soldiers to towers, upgrade them, then fight the next wave.</p>
+            </div>
             <button id="btnCloseDefense" class="btn small">Close</button>
           </div>
 
-          <div class="statsGrid">
-            <div class="stat">Gold: <b id="dGold">0</b></div>
-            <div class="stat">Soldiers: <b id="dSoldiers">0</b></div>
-            <div class="stat">Wave: <b id="dWave">1</b></div>
-            <div class="stat">Enemy: <b id="dEnemy">0</b></div>
-            <div class="stat">Power: <b id="dPower">0</b></div>
+          <div class="defTopGrid">
+            <div class="defStat">
+              <div class="lab">Gold</div>
+              <div class="val" id="dGold">0</div>
+            </div>
+            <div class="defStat">
+              <div class="lab">Soldiers</div>
+              <div class="val" id="dSoldiers">0</div>
+            </div>
+            <div class="defStat">
+              <div class="lab">Wave</div>
+              <div class="val" id="dWave">1</div>
+            </div>
+            <div class="defStat danger">
+              <div class="lab">Enemy</div>
+              <div class="val" id="dEnemy">0</div>
+            </div>
+            <div class="defStat power">
+              <div class="lab">Defense Power</div>
+              <div class="val" id="dPower">0</div>
+            </div>
           </div>
 
-          <div class="row">
-            <button id="btnBuyTowerSlot" class="btn">Buy Tower Slot</button>
+          <div class="battlefieldWrap">
+            <div class="battlefield" id="battlefield">
+              <div class="bfLane lane0"></div>
+              <div class="bfLane lane1"></div>
+              <div class="bfLane lane2"></div>
+
+              <div class="keep">
+                <div class="keepRoof"></div>
+                <div class="keepBody"></div>
+                <div class="keepDoor"></div>
+              </div>
+
+              <div class="bfTowers" id="bfTowers"></div>
+              <div class="bfUnits" id="bfUnits"></div>
+              <div class="bfShots" id="bfShots"></div>
+            </div>
+
+            <div class="bfLegend">
+              <div class="lg"><span class="dot ally"></span> Towers fire based on assigned soldiers.</div>
+              <div class="lg"><span class="dot foe"></span> Enemies surge toward your keep.</div>
+            </div>
+          </div>
+
+          <div class="row defBtns">
+            <button id="btnBuyTowerSlot" class="btn">Build Tower Slot</button>
             <button id="btnFightWave" class="btn primary">Fight Wave</button>
           </div>
 
-          <div id="towerGrid" class="grid"></div>
-          <div id="defReport" class="sub"></div>
+          <div id="towerGrid" class="grid towers"></div>
+
+          <div id="defReport" class="report"></div>
         </div>
       </div>
 
       <!-- Game Over Overlay -->
       <div id="overlayGameOver" class="overlay hidden">
-        <div class="panel">
+        <div class="panel panelScroll">
           <h2>Run Over</h2>
           <div id="summary" class="sub"></div>
           <div id="deathTip" class="tiny"></div>
@@ -114,10 +209,10 @@
         </div>
       </div>
 
-      <div id="toast"></div>
+      <div id="toast" class="toast"></div>
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <script src="game.js" defer></script>
 </body>
 </html>
