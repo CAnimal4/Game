@@ -37,12 +37,12 @@ html, body{
   background: radial-gradient(1200px 700px at 50% -10%, #1b2a6b, var(--bg0));
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  overflow: hidden;            /* no page scroll */
-  overscroll-behavior: none;   /* no bounce navigation */
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body{
-  position: fixed; inset: 0;   /* iOS scroll lock */
+  position: fixed; inset: 0;
   width: 100%;
 }
 
@@ -65,7 +65,7 @@ body{
   background:
     radial-gradient(800px 420px at 50% 15%, rgba(255,255,255,.08), rgba(255,255,255,0) 60%),
     linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  touch-action: none; /* gesture control for game */
+  touch-action: none;
 }
 
 /* ===== HUD ===== */
@@ -80,6 +80,7 @@ body{
   display:flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .hudBottom{
@@ -112,6 +113,23 @@ body{
 
 .statPill.small{ padding: 8px 10px; }
 .statPill.small b{ font-size: 13px; }
+
+/* BIG upper-corner “Power” number (in flow, so it won’t cover UI) */
+.statPill.bigCrowd{
+  margin-left: auto;
+  padding: 12px 16px;
+  border-color: rgba(255,255,255,.22);
+  background:
+    radial-gradient(120px 70px at 30% 30%, rgba(255,255,255,.22), rgba(255,255,255,0) 70%),
+    linear-gradient(135deg, rgba(90,166,255,.38), rgba(25,230,167,.22)),
+    rgba(0,0,0,.22);
+}
+.statPill.bigCrowd .k{ font-size: 10px; letter-spacing: .14em; }
+.statPill.bigCrowd b{
+  font-size: 22px;
+  font-weight: 1000;
+  letter-spacing: .3px;
+}
 
 .hudBtns{
   display:flex;
@@ -493,7 +511,7 @@ h3{ margin-top: 8px; font-size: 15px; }
 .uBottom{ margin-top: 10px; display:flex; align-items:center; justify-content:space-between; gap: 10px; position:relative; z-index:1;}
 .uCost{ font-size: 12px; color: rgba(234,240,255,.78); }
 
-/* ===== Defense UI (polished, “Kingshot-like” feel but original art) ===== */
+/* ===== Defense UI ===== */
 .defTopGrid{
   display:grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -519,10 +537,10 @@ h3{ margin-top: 8px; font-size: 15px; }
 }
 .battlefield{
   position: relative;
-  height: 190px;
+  height: 210px;
   background:
     linear-gradient(180deg, rgba(13,18,42,.35), rgba(0,0,0,.18)),
-    radial-gradient(420px 180px at 50% 0%, rgba(90,166,255,.16), rgba(255,255,255,0) 70%),
+    radial-gradient(420px 180px at 50% 0%, rgba(90,166,255,.18), rgba(255,255,255,0) 70%),
     repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 14px, rgba(255,255,255,0) 14px 44px);
 }
 .bfLane{
@@ -530,29 +548,29 @@ h3{ margin-top: 8px; font-size: 15px; }
   height: 1px;
   background: rgba(255,255,255,.06);
 }
-.bfLane.lane0{ top: 60px; }
-.bfLane.lane1{ top: 105px; }
-.bfLane.lane2{ top: 150px; }
+.bfLane.lane0{ top: 66px; }
+.bfLane.lane1{ top: 118px; }
+.bfLane.lane2{ top: 170px; }
 
 .keep{
   position:absolute;
   left: 50%;
   bottom: 8px;
   transform: translateX(-50%);
-  width: 110px;
-  height: 86px;
+  width: 120px;
+  height: 92px;
   filter: drop-shadow(0 14px 26px rgba(0,0,0,.45));
 }
 .keepRoof{
   position:absolute; left: 10px; right: 10px; top: 0;
-  height: 28px;
+  height: 30px;
   background: linear-gradient(135deg, rgba(255,210,74,.92), rgba(255,139,46,.80));
   clip-path: polygon(50% 0%, 100% 60%, 100% 100%, 0 100%, 0 60%);
   border: 1px solid rgba(255,255,255,.18);
   border-bottom: none;
 }
 .keepBody{
-  position:absolute; left: 6px; right: 6px; top: 24px; bottom: 0;
+  position:absolute; left: 6px; right: 6px; top: 26px; bottom: 0;
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
   border: 1px solid rgba(255,255,255,.18);
@@ -560,13 +578,13 @@ h3{ margin-top: 8px; font-size: 15px; }
 .keepDoor{
   position:absolute; left: 50%; bottom: 8px;
   transform: translateX(-50%);
-  width: 26px; height: 32px;
+  width: 28px; height: 34px;
   border-radius: 10px;
   background: rgba(0,0,0,.26);
   border: 1px solid rgba(255,255,255,.12);
 }
 
-#bfTowers, #bfUnits, #bfShots{
+#bfTowers, #bfUnits, #bfShots, #bfOverlay{
   position:absolute;
   inset: 0;
   pointer-events:none;
@@ -574,18 +592,18 @@ h3{ margin-top: 8px; font-size: 15px; }
 
 .towerSprite{
   position:absolute;
-  width: 34px; height: 50px;
-  border-radius: 14px;
+  width: 36px; height: 54px;
+  border-radius: 16px;
   background:
-    radial-gradient(16px 12px at 50% 18px, rgba(255,255,255,.25), rgba(255,255,255,0) 70%),
-    linear-gradient(180deg, rgba(25,230,167,.30), rgba(0,0,0,.10));
-  border: 1px solid rgba(25,230,167,.35);
+    radial-gradient(18px 14px at 50% 18px, rgba(255,255,255,.25), rgba(255,255,255,0) 70%),
+    linear-gradient(180deg, rgba(25,230,167,.32), rgba(0,0,0,.10));
+  border: 1px solid rgba(25,230,167,.38);
   box-shadow: 0 12px 18px rgba(0,0,0,.30);
-  bottom: 22px;
+  bottom: 24px;
 }
 .towerSprite::after{
   content:"";
-  position:absolute; left: 50%; top: 10px;
+  position:absolute; left: 50%; top: 12px;
   width: 10px; height: 10px;
   transform: translateX(-50%);
   border-radius: 999px;
@@ -595,7 +613,7 @@ h3{ margin-top: 8px; font-size: 15px; }
 
 .enemyUnit{
   position:absolute;
-  width: 20px; height: 20px;
+  width: 22px; height: 22px;
   border-radius: 999px;
   background:
     radial-gradient(10px 8px at 35% 35%, rgba(255,255,255,.18), rgba(255,255,255,0) 70%),
@@ -605,20 +623,63 @@ h3{ margin-top: 8px; font-size: 15px; }
   transform: translate(-50%, -50%);
 }
 .enemyUnit.boss{
-  width: 28px; height: 28px;
+  width: 30px; height: 30px;
   border-radius: 14px;
 }
+
 .enemyUnit .tag{
   position:absolute;
-  left: 50%; top: -18px;
+  left: 50%; top: -20px;
   transform: translateX(-50%);
   font-size: 10px;
   font-weight: 950;
   padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(0,0,0,.45);
+  background: rgba(0,0,0,.50);
   border: 1px solid rgba(255,255,255,.12);
   white-space: nowrap;
+}
+
+/* NEW: HP bar */
+.enemyUnit .hp{
+  position:absolute;
+  left: 50%; top: 26px;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.45);
+  border: 1px solid rgba(255,255,255,.12);
+  overflow:hidden;
+}
+.enemyUnit.boss .hp{ top: 34px; width: 46px; height: 7px; }
+.enemyUnit .hp > i{
+  display:block;
+  height:100%;
+  width:100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,210,74,.95), rgba(255,75,110,.95));
+}
+
+/* NEW: floating damage text */
+.dmg{
+  position:absolute;
+  transform: translate(-50%,-50%);
+  font-size: 11px;
+  font-weight: 1000;
+  color: rgba(234,240,255,.92);
+  text-shadow: 0 8px 18px rgba(0,0,0,.55);
+  opacity: .95;
+}
+
+/* NEW: impact ring */
+.ring{
+  position:absolute;
+  width: 10px; height: 10px;
+  border-radius: 999px;
+  border: 2px solid rgba(127,243,255,.85);
+  transform: translate(-50%,-50%);
+  opacity: .85;
 }
 
 .shot{
@@ -630,6 +691,15 @@ h3{ margin-top: 8px; font-size: 15px; }
   transform: translate(-50%, -50%);
   opacity: .9;
 }
+
+/* NEW: battlefield vignette + win/lose tint */
+.bfTint{
+  position:absolute;
+  inset:0;
+  background: rgba(0,0,0,.0);
+}
+.bfTint.win{ background: rgba(25,230,167,.07); }
+.bfTint.lose{ background: rgba(255,75,110,.10); }
 
 .bfLegend{
   display:flex;
@@ -693,6 +763,7 @@ h3{ margin-top: 8px; font-size: 15px; }
   #app{ padding: 0; }
   .grid.upgrades{ grid-template-columns: 1fr; }
   .defTopGrid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statPill.bigCrowd b{ font-size: 20px; }
 }
 
 @media (min-width: 760px){
