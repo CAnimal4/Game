@@ -49,16 +49,16 @@
   const bfTowers = $("bfTowers");
   const bfUnits = $("bfUnits");
   const bfShots = $("bfShots");
+  const bfOverlay = $("bfOverlay");
 
   // =========================
   // Scroll lock / gestures
   // =========================
-  // Prevent page scroll / rubber-banding. Allow internal panelScroll elements to scroll if needed.
   document.addEventListener(
     "touchmove",
     (e) => {
       const t = e.target;
-      if (t && t.closest && t.closest(".panelScroll")) return; // allow internal overlay scrolling
+      if (t && t.closest && t.closest(".panelScroll")) return;
       e.preventDefault();
     },
     { passive: false }
@@ -115,19 +115,44 @@
   }
 
   // =========================
-  // BigInt formatting
+  // BigInt formatting (NOW: supports 1.2k, 1.9k, etc.)
   // =========================
-  const SUFFIX = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+  // thousands uses lower-case "k" as requested; others remain standard.
+  const SUFFIX = ["", "k", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+
+  // Show one decimal place when the leading unit is < 10 (e.g., 1.2k, 9.8M).
+  // For larger leading units (>=10), show integer (e.g., 12k).
   function formatBig(n) {
     const sign = n < 0n ? "-" : "";
     let x = n < 0n ? -n : n;
+
     if (x < 1000n) return sign + x.toString();
+
+    // Determine scale group
     let idx = 0;
+    let scale = 1n;
     while (x >= 1000n && idx < SUFFIX.length - 1) {
       x /= 1000n;
+      scale *= 1000n;
       idx++;
     }
-    return `${sign}${x.toString()}${SUFFIX[idx]}`;
+
+    // We used x as the truncated leading value. Recompute with original magnitude.
+    // (We need tenths in the current scale.)
+    // Example: n=1234 => idx=1 scale=1000 => whole=1 rem=234 => tenths=2 => "1.2k"
+    const abs = n < 0n ? -n : n;
+    const whole = abs / scale;
+    const rem = abs % scale;
+
+    if (whole < 10n) {
+      const tenthBase = scale / 10n; // for k: 100
+      const tenths = tenthBase > 0n ? (rem / tenthBase) : 0n;
+      // clamp to 9 tenths to avoid “10.0” carry; if it happens, just bump whole
+      if (tenths >= 10n) return `${sign}${(whole + 1n).toString()}${SUFFIX[idx]}`;
+      return `${sign}${whole.toString()}.${tenths.toString()}${SUFFIX[idx]}`;
+    }
+
+    return `${sign}${whole.toString()}${SUFFIX[idx]}`;
   }
 
   function toBigIntSafe(v) {
@@ -210,7 +235,7 @@
     running: false,
     paused: false,
     practice: false,
-    lane: 0, // 0=left, 1=right
+    lane: 0,
     crowd: 10n,
     goldRun: 0,
     soldiersRun: 0n,
@@ -223,7 +248,8 @@
   };
 
   function updateHUD() {
-    hudCrowd && (hudCrowd.textContent = formatBig(game.crowd));
+    // BIG number in upper corner now uses the improved formatting
+    hudCrowd && (hudCrowd.textContent = formatBig(game.crowd < 0n ? 0n : game.crowd));
     hudGold && (hudGold.textContent = String(Math.floor(progress.goldBank)));
     hudSoldiers && (hudSoldiers.textContent = formatBig(soldiersBankBig()));
     hudDist && (hudDist.textContent = `${Math.floor(game.dist)}m`);
@@ -362,7 +388,6 @@
       return { type: "plus", n };
     }
 
-    // Cap offered multipliers when already huge (keeps pace)
     if (kind === "mult") {
       const pool =
         t < 0.6 ? [2, 2, 3, 3, 4] :
@@ -438,7 +463,6 @@
       let left = gateCardFromRoll(rollGate(t));
       let right = gateCardFromRoll(rollGate(t));
 
-      // Slight bias based on luck: better offers, fewer ambushes
       if (Math.random() < 0.35 + 0.25 * luck) {
         const buffLeft = Math.random() < 0.5;
         const target = buffLeft ? left : right;
@@ -450,7 +474,6 @@
       left = maybePurify(gateCardFromRoll(left.roll));
       right = maybePurify(gateCardFromRoll(right.roll));
 
-      // Rare special gate: loot/draft
       if (Math.random() < (0.06 + 0.06 * luck)) {
         const side = Math.random() < 0.5 ? "left" : "right";
         if (Math.random() < 0.55) {
@@ -547,7 +570,6 @@
       return;
     }
 
-    // Soft-cap multiplier effect when crowd is huge (keeps pace)
     if (r?.type === "mult") {
       const before = game.crowd;
       const digits = (game.crowd < 0n ? 0n : game.crowd).toString().length;
@@ -584,7 +606,6 @@
       const effective = (threat * mitFP) / 1000n;
 
       if (game.crowd > effective) {
-        // win: lose some crowd, gain loot
         const lossPct = BigInt(Math.floor(rnd(20, 45)));
         const loss = (effective * lossPct) / 100n;
         game.crowd -= loss;
@@ -647,7 +668,6 @@
     const dt = Math.min(0.033, (t - lastT) / 1000);
     lastT = t;
 
-    // Progress + speed
     const prog = game.dist / 650;
     game.speed = game.baseSpeed + prog * 18 + (game.practice ? 0 : prog * 8);
     game.dist += game.speed * dt * 0.06;
@@ -657,13 +677,11 @@
       saveBest(bestDistance);
     }
 
-    // ===== Spawn cadence: gradually faster, bounded =====
     game.nextSpawn -= dt;
     if (game.nextSpawn <= 0) {
       const tNorm = clamp(game.dist / 480, 0, 2.6);
       spawn(tNorm);
 
-      // Interval shrinks with distance, but never becomes ridiculous.
       const accel = clamp(game.dist / 900, 0, 1.6);
       const maxI = game.practice ? 1.06 : 0.94;
       const minI = game.practice ? 0.72 : 0.48;
@@ -671,7 +689,6 @@
       game.nextSpawn = clamp(interval, minI, maxI);
     }
 
-    // Collision / movement
     const playerY = stage.clientHeight - 220;
     const killY = stage.clientHeight + 220;
 
@@ -705,7 +722,6 @@
       }
     }
 
-    // Cleanup
     for (let i = game.entities.length - 1; i >= 0; i--) {
       if (game.entities[i].y > killY) {
         game.entities[i].el.remove();
@@ -713,7 +729,6 @@
       }
     }
 
-    // Gentle passive gold drip (non-practice)
     if (!game.practice) {
       const drip = dt * (0.22 + game.dist * 0.00012);
       progress.goldBank += drip * goldBonusMult();
@@ -792,7 +807,6 @@
 
   on(stage, "touchstart", (e) => {
     if (!e.touches?.length) return;
-    // If tapping inside overlay panels, don't treat as swipe start.
     const target = e.target;
     if (target && target.closest && target.closest(".panel")) return;
 
@@ -883,48 +897,12 @@
 
   // ===== Kingdom Upgrades =====
   const UPG = [
-    {
-      key: "startCrowdLvl",
-      title: "Start Crowd",
-      desc: (lvl) => `Start with +${lvl * 3} crowd (base 10).`,
-      cost: (lvl) => Math.floor(60 * Math.pow(1.55, lvl)),
-      icon: "👥"
-    },
-    {
-      key: "luckLvl",
-      title: "Gate Luck",
-      desc: (lvl) => `+${lvl * 4}% chance for better gates & fewer ambushes.`,
-      cost: (lvl) => Math.floor(85 * Math.pow(1.6, lvl)),
-      icon: "🍀"
-    },
-    {
-      key: "shieldLvl",
-      title: "Shields",
-      desc: (lvl) => `Start runs with ${lvl} shield(s) that block ambushes.`,
-      cost: (lvl) => Math.floor(110 * Math.pow(1.65, lvl)),
-      icon: "🔰"
-    },
-    {
-      key: "archerLvl",
-      title: "Archers",
-      desc: (lvl) => `Reduce enemy threat by ${Math.floor(clamp(lvl * 0.06, 0, 0.35) * 100)}%.`,
-      cost: (lvl) => Math.floor(120 * Math.pow(1.62, lvl)),
-      icon: "🏹"
-    },
-    {
-      key: "stewardLvl",
-      title: "Steward",
-      desc: (lvl) => `Gold gains ×${(1 + lvl * 0.08).toFixed(2)}.`,
-      cost: (lvl) => Math.floor(140 * Math.pow(1.62, lvl)),
-      icon: "💰"
-    },
-    {
-      key: "mageLvl",
-      title: "Mage",
-      desc: (lvl) => `${Math.floor(clamp(lvl * 0.06, 0, 0.30) * 100)}% chance ambush becomes loot/shield/draft.`,
-      cost: (lvl) => Math.floor(160 * Math.pow(1.66, lvl)),
-      icon: "✨"
-    }
+    { key: "startCrowdLvl", title: "Start Crowd", desc: (lvl) => `Start with +${lvl * 3} crowd (base 10).`, cost: (lvl) => Math.floor(60 * Math.pow(1.55, lvl)), icon: "👥" },
+    { key: "luckLvl", title: "Gate Luck", desc: (lvl) => `+${lvl * 4}% chance for better gates & fewer ambushes.`, cost: (lvl) => Math.floor(85 * Math.pow(1.6, lvl)), icon: "🍀" },
+    { key: "shieldLvl", title: "Shields", desc: (lvl) => `Start runs with ${lvl} shield(s) that block ambushes.`, cost: (lvl) => Math.floor(110 * Math.pow(1.65, lvl)), icon: "🔰" },
+    { key: "archerLvl", title: "Archers", desc: (lvl) => `Reduce enemy threat by ${Math.floor(clamp(lvl * 0.06, 0, 0.35) * 100)}%.`, cost: (lvl) => Math.floor(120 * Math.pow(1.62, lvl)), icon: "🏹" },
+    { key: "stewardLvl", title: "Steward", desc: (lvl) => `Gold gains ×${(1 + lvl * 0.08).toFixed(2)}.`, cost: (lvl) => Math.floor(140 * Math.pow(1.62, lvl)), icon: "💰" },
+    { key: "mageLvl", title: "Mage", desc: (lvl) => `${Math.floor(clamp(lvl * 0.06, 0, 0.30) * 100)}% chance ambush becomes loot/shield/draft.`, cost: (lvl) => Math.floor(160 * Math.pow(1.66, lvl)), icon: "✨" }
   ];
 
   function renderKingdom() {
@@ -1007,8 +985,8 @@
   function towerPower(i) {
     const lvl = (progress.towerLvls[i] | 0) || 1;
     const a = toBigIntSafe(progress.towerAssigned[i] || "0");
-    const mult = 1 + lvl * 0.35; // tower scaling
-    const bonus = 1 + (progress.archerLvl | 0) * 0.04; // archers help defense too
+    const mult = 1 + lvl * 0.35;
+    const bonus = 1 + (progress.archerLvl | 0) * 0.04;
     const fp = BigInt(Math.floor(mult * bonus * 1000));
     return (a * fp) / 1000n;
   }
@@ -1023,17 +1001,26 @@
   function nextEnemyArmy() {
     const wave = progress.defenseWave | 0;
     const totalArmy = soldiersBankBig() + assignedTotal();
-    const pct = BigInt(clamp(28 + wave * 7, 30, 160)); // 30%..160% of your total
+    const pct = BigInt(clamp(28 + wave * 7, 30, 160));
     const base = (totalArmy * pct) / 100n;
     const flat = BigInt(250 * wave);
     return base + flat;
   }
 
-  // ---- Defense battlefield visuals (original art, “Kingshot-like” feel) ----
+  // ---- Defense battlefield visuals/gameplay (improved targeting + HP + impacts) ----
   function clearBattlefield() {
     bfTowers && (bfTowers.innerHTML = "");
     bfUnits && (bfUnits.innerHTML = "");
     bfShots && (bfShots.innerHTML = "");
+    bfOverlay && (bfOverlay.innerHTML = "");
+  }
+
+  function addTint(kind) {
+    if (!bfOverlay) return;
+    bfOverlay.innerHTML = "";
+    const t = document.createElement("div");
+    t.className = `bfTint ${kind}`;
+    bfOverlay.appendChild(t);
   }
 
   function renderTowerSprites() {
@@ -1041,10 +1028,9 @@
     bfTowers.innerHTML = "";
     const rect = battlefield.getBoundingClientRect();
 
-    // Spread towers left-to-right; visually align above the keep
     const n = progress.towerSlots | 0;
-    const left = rect.width * 0.18;
-    const right = rect.width * 0.82;
+    const left = rect.width * 0.16;
+    const right = rect.width * 0.84;
 
     for (let i = 0; i < n; i++) {
       const x = left + (n === 1 ? 0.5 : i / (n - 1)) * (right - left);
@@ -1062,25 +1048,37 @@
     const rect = battlefield.getBoundingClientRect();
     const enemies = [];
 
-    // Visual count is capped; we show a few units with tags.
     const digits = enemyBig.toString().length;
-    const visCount = clamp(4 + Math.floor(digits / 2), 4, 14);
+    const visCount = clamp(5 + Math.floor(digits / 2), 5, 16);
     const boss = digits >= 7 || wave % 5 === 0;
 
     for (let i = 0; i < visCount; i++) {
       const unit = document.createElement("div");
       unit.className = "enemyUnit" + (boss && i === 0 ? " boss" : "");
-      const laneY = [55, 100, 145][i % 3];
-      const x = rnd(rect.width * 0.15, rect.width * 0.85);
+      const laneY = [58, 110, 162][i % 3];
+      const x = rnd(rect.width * 0.20, rect.width * 0.80);
       unit.style.left = `${x}px`;
       unit.style.top = `${laneY}px`;
 
+      // Tag on the lead unit
       if (i === 0) {
         const tag = document.createElement("div");
         tag.className = "tag";
-        tag.textContent = boss ? `BOSS • ${formatBig(enemyBig)}` : `Wave ${wave}`;
+        tag.textContent = boss ? `BOSS • ${formatBig(enemyBig)}` : `Wave ${wave} • ${formatBig(enemyBig)}`;
         unit.appendChild(tag);
       }
+
+      // HP bar (visual only; we drive it in JS)
+      const hp = document.createElement("div");
+      hp.className = "hp";
+      const fill = document.createElement("i");
+      hp.appendChild(fill);
+      unit.appendChild(hp);
+
+      // Attach state
+      unit.__hpFill = fill;
+      unit.__hp = 1;      // 0..1
+      unit.__alive = true;
 
       bfUnits.appendChild(unit);
       enemies.push(unit);
@@ -1088,79 +1086,195 @@
     return enemies;
   }
 
-  function fireShots(durationMs = 1400) {
-    if (!bfShots || !battlefield || !bfTowers) return;
-    const rect = battlefield.getBoundingClientRect();
-    const towers = Array.from(bfTowers.children);
+  function ring(x, y) {
+    if (!bfOverlay) return;
+    const r = document.createElement("div");
+    r.className = "ring";
+    r.style.left = `${x}px`;
+    r.style.top = `${y}px`;
+    bfOverlay.appendChild(r);
+    r.animate(
+      [
+        { transform: "translate(-50%,-50%) scale(.7)", opacity: .8 },
+        { transform: "translate(-50%,-50%) scale(3.0)", opacity: 0 }
+      ],
+      { duration: 380, easing: "cubic-bezier(.2,.9,.1,1)" }
+    ).onfinish = () => r.remove();
+  }
 
-    const endAt = performance.now() + durationMs;
+  function dmgText(x, y, text) {
+    if (!bfOverlay) return;
+    const d = document.createElement("div");
+    d.className = "dmg";
+    d.textContent = text;
+    d.style.left = `${x}px`;
+    d.style.top = `${y}px`;
+    bfOverlay.appendChild(d);
+    d.animate(
+      [
+        { transform: "translate(-50%,-50%) translateY(0px)", opacity: .95 },
+        { transform: "translate(-50%,-50%) translateY(-26px)", opacity: 0 }
+      ],
+      { duration: 520, easing: "cubic-bezier(.2,.9,.1,1)" }
+    ).onfinish = () => d.remove();
+  }
 
-    const loop = () => {
-      if (performance.now() > endAt) return;
-      if (towers.length === 0) return;
+  function fireShot(fromX, fromY, toX, toY) {
+    if (!bfShots) return;
+    const s = document.createElement("div");
+    s.className = "shot";
+    s.style.left = `${fromX}px`;
+    s.style.top = `${fromY}px`;
+    bfShots.appendChild(s);
 
-      // random tower fires
-      const t = towers[(Math.random() * towers.length) | 0];
-      const tx = t.getBoundingClientRect().left + t.getBoundingClientRect().width / 2 - rect.left;
-      const ty = rect.height - 48;
-
-      const shot = document.createElement("div");
-      shot.className = "shot";
-      shot.style.left = `${tx}px`;
-      shot.style.top = `${ty}px`;
-      bfShots.appendChild(shot);
-
-      // animate towards mid-field
-      const targetX = rnd(rect.width * 0.25, rect.width * 0.75);
-      const targetY = rnd(40, 120);
-      shot.animate(
-        [
-          { transform: "translate(-50%,-50%) scale(1)", opacity: 0.9 },
-          { transform: `translate(${targetX - tx - 4}px, ${targetY - ty - 4}px) scale(.9)`, opacity: 0.0 }
-        ],
-        { duration: 420, easing: "cubic-bezier(.2,.9,.1,1)" }
-      ).onfinish = () => shot.remove();
-
-      setTimeout(loop, 60);
-    };
-    loop();
+    s.animate(
+      [
+        { transform: "translate(-50%,-50%) scale(1)", opacity: .9 },
+        { transform: `translate(${toX - fromX}px, ${toY - fromY}px) scale(.9)`, opacity: 0.05 }
+      ],
+      { duration: 260, easing: "cubic-bezier(.2,.9,.1,1)" }
+    ).onfinish = () => s.remove();
   }
 
   async function playDefenseBattle(win, enemyBig, powerBig) {
-    if (!battlefield) return;
+    if (!battlefield || !bfUnits || !bfTowers) return;
 
     clearBattlefield();
     renderTowerSprites();
-    const enemies = spawnEnemySprites(enemyBig, progress.defenseWave | 0);
+    addTint(win ? "win" : "lose");
 
-    // Enemies surge toward the keep
+    const wave = progress.defenseWave | 0;
+    const enemies = spawnEnemySprites(enemyBig, wave);
+
     const rect = battlefield.getBoundingClientRect();
-    const endY = rect.height - 34;
+    const towers = Array.from(bfTowers.children);
 
+    // Enemy advance: win => slowed and staggered; lose => they surge harder
+    const endY = rect.height - 34;
     enemies.forEach((u, idx) => {
       const start = u.getBoundingClientRect();
-      const x = start.left + start.width / 2 - rect.left;
       const y = start.top + start.height / 2 - rect.top;
-
+      const surge = win ? rnd(0.55, 0.75) : rnd(0.95, 1.18);
       u.animate(
         [
           { transform: "translate(-50%,-50%) scale(1)", filter: "brightness(1)" },
-          { transform: `translate(${(x - x) * 0}px, ${endY - y}px) scale(1.02)`, filter: "brightness(1.05)" }
+          { transform: `translate(-50%,-50%) translateY(${(endY - y) * surge}px) scale(${win ? 1.02 : 1.06})`, filter: win ? "brightness(1.05)" : "brightness(1.12)" }
         ],
-        { duration: 1450 + idx * 40, easing: "cubic-bezier(.25,.85,.12,1)" }
+        { duration: 1400 + idx * 25, easing: "cubic-bezier(.25,.85,.12,1)", fill: "forwards" }
       );
     });
 
-    fireShots(1200);
+    // Combat simulation (visual): turn enemyBig/powerBig into a short burst DPS race
+    const totalHP = 1.0; // normalized
+    let hp = totalHP;
 
-    // Result impact pulse
-    await new Promise((res) => setTimeout(res, 1500));
+    // If power is close, make it feel close: the visual pace reflects ratio.
+    const ratio = Number(powerBig > 0n ? (enemyBig * 1000n) / powerBig : 2000n); // >1000 => weaker
+    const difficulty = clamp(ratio / 1000, 0.4, 2.2); // 0.4 easy, 2.2 hard
+
+    const durationMs = clamp(1200 + difficulty * 500, 1200, 2300);
+    const startT = performance.now();
+    const endT = startT + durationMs;
+
+    const baseDps = win ? (1.0 / durationMs) * 1.15 : (1.0 / durationMs) * 0.85;
+
+    // Target selection helper
+    const alive = () => enemies.filter(e => e.__alive);
+
+    while (performance.now() < endT) {
+      const now = performance.now();
+      const k = (now - startT) / durationMs;
+
+      const targets = alive();
+      if (targets.length === 0) break;
+
+      // Pick a target (front-most visually: lowest top-to-end distance; approximate by y)
+      const target = pick(targets);
+      const tRect = target.getBoundingClientRect();
+      const tx = tRect.left + tRect.width / 2 - rect.left;
+      const ty = tRect.top + tRect.height / 2 - rect.top;
+
+      // Tower fires
+      if (towers.length) {
+        const tower = pick(towers);
+        const tr = tower.getBoundingClientRect();
+        const fx0 = tr.left + tr.width / 2 - rect.left;
+        const fy0 = rect.height - 52;
+        fireShot(fx0, fy0, tx, ty);
+      }
+
+      // Apply damage (normalized)
+      const dmg = baseDps * (60 + rnd(0, 40)) / 100 * (win ? 1 : 0.9);
+      hp = Math.max(0, hp - dmg * 70); // scale to feel “chunky”
+
+      // Spread damage across units by lowering their bars
+      const per = clamp(dmg * 6.5, 0.01, 0.08);
+      target.__hp = Math.max(0, target.__hp - per);
+      if (target.__hpFill) target.__hpFill.style.width = `${Math.floor(target.__hp * 100)}%`;
+
+      ring(tx, ty);
+      if (Math.random() < 0.65) dmgText(tx, ty - 10, `-${(Math.floor(8 + rnd(0, 18)))}%`);
+
+      // If a unit "dies", pop it
+      if (target.__hp <= 0.02 && target.__alive) {
+        target.__alive = false;
+        target.animate(
+          [
+            { transform: "translate(-50%,-50%) scale(1)", opacity: 1 },
+            { transform: "translate(-50%,-50%) scale(1.6)", opacity: 0 }
+          ],
+          { duration: 260, easing: "cubic-bezier(.2,.9,.1,1)" }
+        ).onfinish = () => target.remove();
+      }
+
+      // Win mode: accelerate deletes near the end for a satisfying finish
+      if (win && k > 0.78 && Math.random() < 0.30) {
+        const extra = pick(alive());
+        if (extra) {
+          extra.__hp = Math.max(0, extra.__hp - 0.18);
+          if (extra.__hpFill) extra.__hpFill.style.width = `${Math.floor(extra.__hp * 100)}%`;
+          const er = extra.getBoundingClientRect();
+          ring(er.left + er.width / 2 - rect.left, er.top + er.height / 2 - rect.top);
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 70));
+    }
+
+    // End state: if win, clear remaining; if lose, shake + darken
+    if (win) {
+      alive().forEach((u) => {
+        u.__alive = false;
+        u.animate(
+          [
+            { transform: "translate(-50%,-50%) scale(1)", opacity: 1 },
+            { transform: "translate(-50%,-50%) scale(1.4)", opacity: 0 }
+          ],
+          { duration: 240, easing: "cubic-bezier(.2,.9,.1,1)" }
+        ).onfinish = () => u.remove();
+      });
+    } else {
+      // Keep shake
+      battlefield.animate(
+        [
+          { transform: "translateX(0px)" },
+          { transform: "translateX(-6px)" },
+          { transform: "translateX(6px)" },
+          { transform: "translateX(-4px)" },
+          { transform: "translateX(4px)" },
+          { transform: "translateX(0px)" }
+        ],
+        { duration: 420, easing: "linear" }
+      );
+    }
+
+    await new Promise((res) => setTimeout(res, 280));
+
     const msg = win
-      ? `Victory • Power ${formatBig(powerBig)} vs ${formatBig(enemyBig)}`
-      : `Defeat • Power ${formatBig(powerBig)} vs ${formatBig(enemyBig)}`;
+      ? `Victory • ${formatBig(powerBig)} vs ${formatBig(enemyBig)}`
+      : `Defeat • ${formatBig(powerBig)} vs ${formatBig(enemyBig)}`;
     showToast(msg);
 
-    // Final burst
     const r = stageRect();
     burst(r.width * 0.5, r.height * 0.62, win ? 16 : 10, 620);
   }
@@ -1231,7 +1345,7 @@
     if (bank <= 0n && dir === "plus") return;
 
     const cur = toBigIntSafe(progress.towerAssigned[i] || "0");
-    const delta = (bank * 10n) / 100n; // 10% of current bank
+    const delta = (bank * 10n) / 100n;
     const step = delta > 0n ? delta : 1n;
 
     if (dir === "plus") {
@@ -1314,7 +1428,6 @@
       return;
     }
 
-    // Loss: casualties (hits bank first, then trims assignments)
     let bank = soldiersBankBig();
     const casualties = enemy / 20n + BigInt(30 * wave);
     bank = bank > casualties ? bank - casualties : 0n;
@@ -1322,7 +1435,7 @@
 
     for (let i = 0; i < progress.towerSlots; i++) {
       const cur = toBigIntSafe(progress.towerAssigned[i] || "0");
-      const trim = cur / 12n; // ~8%
+      const trim = cur / 12n;
       progress.towerAssigned[i] = (cur - trim).toString();
     }
 
@@ -1353,11 +1466,9 @@
   onClickId("btnRestart", hardRestart);
   onClickId("btnRunAgain", () => startRun(false));
 
-  // Tap overlay background to start (but do not steal button clicks)
   on(overlayStart, "pointerdown", (e) => {
     const target = e.target;
     if (target && target.closest && target.closest("button")) return;
-    // ignore taps on panel content
     if (target && target.closest && target.closest(".panel")) return;
     startRun(false);
   });
@@ -1380,7 +1491,6 @@
 
   onClickId("btnResetProgress", resetProgress);
 
-  // Event delegation for dynamic buttons
   on(upgradeGrid, "click", (e) => {
     const b = e.target && e.target.closest ? e.target.closest("[data-upg]") : null;
     if (!b) return;
