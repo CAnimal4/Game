@@ -14,9 +14,11 @@
       <!-- HUD -->
       <header id="hud" class="ui">
         <div class="hudTop">
-          <div class="statPill"><span class="k">Crowd</span><b id="hudCrowd">10</b></div>
           <div class="statPill"><span class="k">Gold</span><b id="hudGold">0</b></div>
           <div class="statPill"><span class="k">Soldiers</span><b id="hudSoldiers">0</b></div>
+
+          <!-- BIG, upper-corner crowd number (the one that matters for clashes) -->
+          <div class="statPill bigCrowd"><span class="k">Power</span><b id="hudCrowd">10</b></div>
         </div>
         <div class="hudBottom">
           <div class="statPill small"><span class="k">Dist</span><b id="hudDist">0m</b></div>
@@ -174,11 +176,12 @@
               <div class="bfTowers" id="bfTowers"></div>
               <div class="bfUnits" id="bfUnits"></div>
               <div class="bfShots" id="bfShots"></div>
+              <div class="bfOverlay" id="bfOverlay"></div>
             </div>
 
             <div class="bfLegend">
-              <div class="lg"><span class="dot ally"></span> Towers fire based on assigned soldiers.</div>
-              <div class="lg"><span class="dot foe"></span> Enemies surge toward your keep.</div>
+              <div class="lg"><span class="dot ally"></span> Towers target enemies. Watch HP bars drop.</div>
+              <div class="lg"><span class="dot foe"></span> If enemies reach the keep, you lose the wave.</div>
             </div>
           </div>
 
