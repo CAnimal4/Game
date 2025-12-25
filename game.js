@@ -162,6 +162,39 @@
     return 0n;
   }
 
+
+  // BigInt math helpers (fixed-point multipliers)
+  function mulBigIntFP(n, fp, denom = 1000n) {
+    // n * fp / denom
+    return (n * fp) / denom;
+  }
+
+  function addStats({ gold = 0, soldiers = 0n, clashWin = false, clashLose = false, run = false, bestCrowd = null, bestWave = null } = {}) {
+    const s = progress.stats;
+    if (!s) return;
+
+    if (run) s.runs = (s.runs | 0) + 1;
+    if (clashWin) s.clashWins = (s.clashWins | 0) + 1;
+    if (clashLose) s.clashLosses = (s.clashLosses | 0) + 1;
+
+    if (gold) s.goldEarned = (s.goldEarned | 0) + Math.floor(gold);
+
+    if (soldiers && soldiers > 0n) {
+      const cur = toBigIntSafe(s.soldiersEarned || "0");
+      s.soldiersEarned = (cur + soldiers).toString();
+    }
+
+    if (bestCrowd !== null) {
+      const cur = toBigIntSafe(s.bestCrowd || "0");
+      if (bestCrowd > cur) s.bestCrowd = bestCrowd.toString();
+    }
+
+    if (bestWave !== null) {
+      s.bestWave = Math.max(s.bestWave | 0, bestWave | 0);
+    }
+
+    saveSave(progress);
+  }
   // =========================
   // Save / Load
   // =========================
@@ -196,6 +229,17 @@
     goldBank: 0,
     soldiersBank: "0",
 
+    // Cumulative stats (stored offline)
+    stats: {
+      runs: 0,
+      clashWins: 0,
+      clashLosses: 0,
+      goldEarned: 0,
+      soldiersEarned: "0",
+      bestCrowd: "0",
+      bestWave: 1
+    },
+
     startCrowdLvl: 0,
     luckLvl: 0,
     shieldLvl: 0,
@@ -215,6 +259,16 @@
   if (typeof progress.soldiersBank !== "string") progress.soldiersBank = String(progress.soldiersBank || "0");
   if (typeof progress.towerSlots !== "number" || progress.towerSlots < 1) progress.towerSlots = 1;
   if (typeof progress.defenseWave !== "number" || progress.defenseWave < 1) progress.defenseWave = 1;
+
+  // Stats normalization
+  if (!progress.stats || typeof progress.stats !== "object") progress.stats = JSON.parse(JSON.stringify(defaultProgress.stats));
+  if (typeof progress.stats.runs !== "number") progress.stats.runs = 0;
+  if (typeof progress.stats.clashWins !== "number") progress.stats.clashWins = 0;
+  if (typeof progress.stats.clashLosses !== "number") progress.stats.clashLosses = 0;
+  if (typeof progress.stats.goldEarned !== "number") progress.stats.goldEarned = 0;
+  if (typeof progress.stats.soldiersEarned !== "string") progress.stats.soldiersEarned = String(progress.stats.soldiersEarned || "0");
+  if (typeof progress.stats.bestCrowd !== "string") progress.stats.bestCrowd = String(progress.stats.bestCrowd || "0");
+  if (typeof progress.stats.bestWave !== "number" || progress.stats.bestWave < 1) progress.stats.bestWave = 1;
 
   let bestDistance = loadBest();
 
@@ -244,7 +298,9 @@
     speed: 330,
     baseSpeed: 330,
     nextSpawn: 0,
-    entities: []
+    entities: [],
+    runMaxCrowd: 10n,
+    clashStreak: 0
   };
 
   function updateHUD() {
@@ -364,11 +420,11 @@
   function rollGate(t) {
     const luck = luckPercent() / 100;
 
-    const baseRisk = clamp(0.10 + 0.12 * t, 0.10, 0.36);
+    const baseRisk = clamp(0.08 + 0.10 * t, 0.08, 0.30);
     const risk = clamp(baseRisk * (1 - 0.85 * luck), 0.05, 0.40);
 
     const multBias = clamp(0.20 + 0.25 * t, 0.20, 0.60);
-    const plusBias = clamp(0.70 - 0.20 * t, 0.35, 0.75);
+    const plusBias = clamp(0.74 - 0.18 * t, 0.42, 0.78);
 
     const wRisk = risk;
     const wMult = (1 - wRisk) * multBias;
@@ -382,8 +438,8 @@
     ]);
 
     if (kind === "plus") {
-      const base = 8 + Math.floor(6 * t);
-      const spread = 10 + Math.floor(12 * t);
+      const base = 10 + Math.floor(7 * t);
+      const spread = 12 + Math.floor(16 * t);
       const n = Math.floor(base + rnd(0, spread) * (1 + 0.6 * luck));
       return { type: "plus", n };
     }
@@ -403,8 +459,8 @@
       return { type: "mult", m };
     }
 
-    const base = 6 + Math.floor(6 * t);
-    const spread = 10 + Math.floor(12 * t);
+    const base = 6 + Math.floor(5 * t);
+    const spread = 10 + Math.floor(11 * t);
     const n = Math.floor(base + rnd(0, spread));
     return { type: "risk", n };
   }
@@ -442,7 +498,7 @@
   function spawn(t) {
     const luck = luckPercent() / 100;
 
-    const enemyChance = clamp(0.18 + 0.12 * t, 0.18, 0.48);
+    const enemyChance = clamp(0.14 + 0.09 * t, 0.14, 0.36);
     const coinChance = clamp(0.15 + 0.07 * t, 0.15, 0.30);
     const soldChance = clamp(0.10 + 0.05 * t, 0.10, 0.26);
     const shieldChance = clamp(0.05 + 0.02 * t + 0.03 * luck, 0.05, 0.16);
@@ -506,22 +562,38 @@
       return;
     }
 
-    // Enemy scaling (keeps pace with your crowd + progress; mitigated by archers)
-    const crowd = game.crowd;
-    const tNum = BigInt(Math.floor(clamp(t, 0, 2.6) * 100));
-    let threat = 12n + BigInt(Math.floor(10 * t)) * 6n;
+    // Enemy scaling (keeps pace with your crowd + progression; tuned to be challenging-but-beatable)
+    const crowd = game.crowd < 1n ? 1n : game.crowd;
 
-    const basePct = 25n + (tNum * 3n) / 4n;
-    const randPct = BigInt(Math.floor(rnd(80, 125)));
-    let pct = (basePct * randPct) / 100n;
-    pct = clamp(Number(pct), 18, 140);
-    threat += (crowd * BigInt(pct)) / 100n;
+    // As you win more clashes in a row, enemies ramp slightly to stay interesting.
+    const streak = game.clashStreak | 0;
 
-    if (Math.random() < 0.10 + t * 0.10) {
-      const spike = BigInt(Math.floor(rnd(120, 220)));
-      threat = (threat * spike) / 100n;
+    // Base ratio stays mostly < 1 so you can win without needing a perfect Rally every time.
+    const baseFP = BigInt(Math.floor((0.66 + 0.10 * t + Math.min(streak, 6) * 0.03) * 1000));
+    const randFP = BigInt(Math.floor(rnd(-90, 140))); // -0.09 .. +0.14
+    let ratioFP = baseFP + randFP;
+
+    // Archers soften enemy power a bit (visual + gameplay tuning).
+    const mit = enemyMitigation(); // 0..0.35
+    ratioFP = ratioFP - BigInt(Math.floor(mit * 120)); // up to -0.042
+
+    // Clamp to a sane band; occasional larger enemies still appear but are dodgeable.
+    ratioFP = BigInt(clamp(Number(ratioFP), 480, 1180)); // 0.48 .. 1.18
+
+    // Rare spike (late-game variety), but keep it fair.
+    if (Math.random() < clamp(0.06 + t * 0.04, 0.06, 0.16)) {
+      const spikeFP = BigInt(Math.floor(rnd(1040, 1180))); // +4% .. +18%
+      ratioFP = mulBigIntFP(ratioFP, spikeFP, 1000n);
+      ratioFP = BigInt(clamp(Number(ratioFP), 520, 1320)); // cap at 1.32
     }
-    if (crowd > 1000000n && threat < crowd / 12n) threat = crowd / 12n;
+
+    // Flat component so early enemies aren't trivial; scales gently.
+    const flat = 10n + BigInt(6 + Math.floor(10 * t)) + BigInt(Math.min(70, streak * 4));
+
+    let threat = mulBigIntFP(crowd, ratioFP, 1000n) + flat;
+
+    // Prevent absurd undershoots in very large crowds.
+    if (crowd > 1000000n && threat < crowd / 18n) threat = crowd / 18n;
 
     game.entities.push(
       makeSingle(y, lane, {
@@ -544,6 +616,7 @@
       const gain = Math.floor(r.g * goldBonusMult());
       progress.goldBank += gain;
       game.goldRun += gain;
+      if (!game.practice) addStats({ gold: gain });
       saveSave(progress);
       showToast(`Loot +${gain} gold`);
       return;
@@ -553,6 +626,7 @@
       const add = BigInt(r.s || 0);
       setSoldiersBankBig(soldiersBankBig() + add);
       game.soldiersRun += add;
+      if (!game.practice) addStats({ soldiers: add });
       saveSave(progress);
       showToast(`Draft +${formatBig(add)} soldiers`);
       return;
@@ -605,8 +679,8 @@
       const mitFP = BigInt(Math.floor((1 - mitigation) * 1000));
       const effective = (threat * mitFP) / 1000n;
 
-      if (game.crowd > effective) {
-        const lossPct = BigInt(Math.floor(rnd(20, 45)));
+      if (game.crowd >= effective) {
+        const lossPct = BigInt(Math.floor(rnd(12, 26) + clamp(game.dist / 420, 0, 6)));
         const loss = (effective * lossPct) / 100n;
         game.crowd -= loss;
 
@@ -619,12 +693,17 @@
         setSoldiersBankBig(soldiersBankBig() + soldierGain);
         game.soldiersRun += soldierGain;
 
+        game.clashStreak = (game.clashStreak | 0) + 1;
+        if (!game.practice) addStats({ gold: gainGold, soldiers: soldierGain, clashWin: true });
+
         saveSave(progress);
         showToast(`Won clash! +${gainGold} gold, +${formatBig(soldierGain)} soldiers`);
         return;
       }
 
       game.crowd = 0n;
+      game.clashStreak = 0;
+      if (!game.practice) addStats({ clashLose: true });
       showToast(`Defeated by enemy ${formatBig(effective)}`);
       return;
     }
@@ -633,6 +712,7 @@
       const gain = Math.floor((c.g || 0) * goldBonusMult());
       progress.goldBank += gain;
       game.goldRun += gain;
+      if (!game.practice) addStats({ gold: gain });
       saveSave(progress);
       showToast(`Gold +${gain}`);
       return;
@@ -642,6 +722,7 @@
       const add = BigInt(c.s || 0);
       setSoldiersBankBig(soldiersBankBig() + add);
       game.soldiersRun += add;
+      if (!game.practice) addStats({ soldiers: add });
       saveSave(progress);
       showToast(`Soldiers +${formatBig(add)}`);
       return;
@@ -713,6 +794,7 @@
         }
 
         playerNumEl && (playerNumEl.textContent = formatBig(game.crowd < 0n ? 0n : game.crowd));
+        if (game.crowd > game.runMaxCrowd) game.runMaxCrowd = game.crowd;
         updateHUD();
 
         if (game.crowd <= 0n) {
@@ -752,6 +834,8 @@
     playerEl && playerEl.classList.remove("right");
 
     game.crowd = startCrowdValueBig();
+    game.runMaxCrowd = game.crowd;
+    game.clashStreak = 0;
     game.goldRun = 0;
     game.soldiersRun = 0n;
     game.shields = shieldCharges();
@@ -789,6 +873,11 @@
         <div><b>Soldiers earned (run):</b> ${formatBig(earnedSold)}</div>
         <div><b>Best distance:</b> ${Math.floor(bestDistance)}m</div>
       `;
+    }
+
+    // Offline run stats
+    if (!game.practice) {
+      addStats({ run: true, bestCrowd: game.runMaxCrowd });
     }
 
     const tips = [
@@ -1039,6 +1128,13 @@
       t.style.left = `${x}px`;
       t.style.transform = "translateX(-50%)";
       t.title = `Tower ${i + 1}`;
+      t.innerHTML = `
+        <div class="tBase"></div>
+        <div class="tWall"></div>
+        <div class="tCrown"></div>
+        <div class="tArcher"></div>
+        <div class="tFlag"></div>
+      `;
       bfTowers.appendChild(t);
     }
   }
@@ -1049,16 +1145,38 @@
     const enemies = [];
 
     const digits = enemyBig.toString().length;
-    const visCount = clamp(5 + Math.floor(digits / 2), 5, 16);
+    const visCount = clamp(6 + Math.floor(digits / 2), 6, 20);
     const boss = digits >= 7 || wave % 5 === 0;
+
+    const pickType = () => weightedPick([
+      { v: "raider", w: 0.46 },
+      { v: "brute", w: 0.28 },
+      { v: "archer", w: 0.18 },
+      { v: "shaman", w: 0.08 }
+    ]);
 
     for (let i = 0; i < visCount; i++) {
       const unit = document.createElement("div");
-      unit.className = "enemyUnit" + (boss && i === 0 ? " boss" : "");
-      const laneY = [58, 110, 162][i % 3];
-      const x = rnd(rect.width * 0.20, rect.width * 0.80);
+      const type = boss && i === 0 ? "boss" : pickType();
+      unit.className = `enemyUnit ${type}` + (boss && i === 0 ? " boss" : "");
+
+      const laneY = [56, 108, 160][i % 3] + rnd(-6, 6);
+      const x = rnd(rect.width * 0.18, rect.width * 0.82);
       unit.style.left = `${x}px`;
       unit.style.top = `${laneY}px`;
+
+      // Sprite body (top-down "character" silhouette)
+      const u = document.createElement("div");
+      u.className = "u";
+      u.innerHTML = `
+        <span class="shadow"></span>
+        <span class="feet"></span>
+        <span class="body"></span>
+        <span class="head"></span>
+        <span class="weapon"></span>
+        <span class="shield"></span>
+      `;
+      unit.appendChild(u);
 
       // Tag on the lead unit
       if (i === 0) {
@@ -1068,7 +1186,7 @@
         unit.appendChild(tag);
       }
 
-      // HP bar (visual only; we drive it in JS)
+      // HP bar (visual only; driven in JS)
       const hp = document.createElement("div");
       hp.className = "hp";
       const fill = document.createElement("i");
@@ -1121,16 +1239,21 @@
 
   function fireShot(fromX, fromY, toX, toY) {
     if (!bfShots) return;
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+
     const s = document.createElement("div");
-    s.className = "shot";
+    s.className = "shot arrow";
     s.style.left = `${fromX}px`;
     s.style.top = `${fromY}px`;
+    s.style.setProperty("--ang", `${ang.toFixed(1)}deg`);
     bfShots.appendChild(s);
 
     s.animate(
       [
-        { transform: "translate(-50%,-50%) scale(1)", opacity: .9 },
-        { transform: `translate(${toX - fromX}px, ${toY - fromY}px) scale(.9)`, opacity: 0.05 }
+        { transform: "translate(-50%,-50%) rotate(var(--ang)) translateX(0px)", opacity: 0.95 },
+        { transform: `translate(-50%,-50%) rotate(var(--ang)) translate(${dx}px, ${dy}px)`, opacity: 0.08 }
       ],
       { duration: 260, easing: "cubic-bezier(.2,.9,.1,1)" }
     ).onfinish = () => s.remove();
@@ -1418,6 +1541,7 @@
       setSoldiersBankBig(soldiersBankBig() + soldGain);
 
       progress.defenseWave = wave + 1;
+      if (!game.practice) addStats({ gold: goldGain, soldiers: soldGain, bestWave: progress.defenseWave });
       saveSave(progress);
 
       defReport && (defReport.textContent = `Victory. +${goldGain} gold, +${formatBig(soldGain)} soldiers. Next: Wave ${progress.defenseWave}.`);

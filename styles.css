@@ -592,39 +592,152 @@ h3{ margin-top: 8px; font-size: 15px; }
 
 .towerSprite{
   position:absolute;
-  width: 36px; height: 54px;
-  border-radius: 16px;
-  background:
-    radial-gradient(18px 14px at 50% 18px, rgba(255,255,255,.25), rgba(255,255,255,0) 70%),
-    linear-gradient(180deg, rgba(25,230,167,.32), rgba(0,0,0,.10));
-  border: 1px solid rgba(25,230,167,.38);
-  box-shadow: 0 12px 18px rgba(0,0,0,.30);
-  bottom: 24px;
+  width: 44px;
+  height: 70px;
+  bottom: 18px;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 12px 18px rgba(0,0,0,.34));
+  pointer-events:none;
 }
-.towerSprite::after{
-  content:"";
-  position:absolute; left: 50%; top: 12px;
-  width: 10px; height: 10px;
+.towerSprite .tBase{
+  position:absolute; inset: 18px 0 0 0;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(25,230,167,.38), rgba(0,0,0,.14));
+  border: 1px solid rgba(25,230,167,.40);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+}
+.towerSprite .tWall{
+  position:absolute; left: 6px; right: 6px; top: 28px; bottom: 10px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.03));
+  border: 1px solid rgba(255,255,255,.10);
+}
+.towerSprite .tCrown{
+  position:absolute; left: 2px; right: 2px; top: 12px; height: 22px;
+  border-radius: 16px 16px 12px 12px;
+  background:
+    radial-gradient(18px 14px at 50% 55%, rgba(90,166,255,.25), rgba(90,166,255,0) 70%),
+    linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.18));
+  border: 1px solid rgba(90,166,255,.30);
+  clip-path: polygon(0 45%, 8% 45%, 8% 0, 24% 0, 24% 45%, 38% 45%, 38% 0, 62% 0, 62% 45%, 76% 45%, 76% 0, 92% 0, 92% 45%, 100% 45%, 100% 100%, 0 100%);
+}
+.towerSprite .tArcher{
+  position:absolute; left: 50%; top: 18px;
+  transform: translateX(-50%);
+  width: 12px; height: 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(234,240,255,.92), rgba(90,166,255,.92));
+  box-shadow: 0 0 0 6px rgba(90,166,255,.12), 0 10px 14px rgba(0,0,0,.25);
+}
+.towerSprite .tFlag{
+  position:absolute; left: 50%; top: 4px;
+  transform: translateX(-50%);
+  width: 18px; height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255,210,74,.95), rgba(255,139,46,.90));
+  clip-path: polygon(0 0, 100% 30%, 70% 50%, 100% 70%, 0 100%, 0 0);
+  opacity: .90;
+}
+.enemyUnit{
+  --armor1: rgba(255,75,110,.92);
+  --armor2: rgba(43,7,17,.92);
+  --skin1: rgba(255,228,196,.70);
+  --skin2: rgba(255,196,140,.40);
+  --steel1: rgba(234,240,255,.90);
+  --steel2: rgba(130,150,180,.55);
+  --accent: rgba(255,210,74,.92);
+
+  position:absolute;
+  width: 28px; height: 28px;
+  transform: translate(-50%, -50%);
+  pointer-events:none;
+}
+.enemyUnit.boss{ width: 36px; height: 36px; }
+
+.enemyUnit .u{ position:absolute; inset: 0; }
+.enemyUnit .u > span{ position:absolute; display:block; }
+
+.enemyUnit .u .shadow{
+  left: 50%; bottom: 2px;
+  width: 18px; height: 10px;
   transform: translateX(-50%);
   border-radius: 999px;
-  background: rgba(90,166,255,.95);
-  box-shadow: 0 0 0 6px rgba(90,166,255,.12);
+  background: rgba(0,0,0,.35);
+  filter: blur(1px);
+  opacity: .65;
+}
+.enemyUnit .u .feet{
+  left: 50%; bottom: 4px;
+  width: 14px; height: 10px;
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(0,0,0,.10), rgba(0,0,0,.28));
+  border: 1px solid rgba(255,255,255,.08);
+}
+.enemyUnit .u .body{
+  left: 50%; top: 10px;
+  width: 16px; height: 16px;
+  transform: translateX(-50%);
+  border-radius: 10px;
+  background: radial-gradient(10px 8px at 35% 35%, rgba(255,255,255,.16), rgba(255,255,255,0) 70%),
+              linear-gradient(135deg, var(--armor1), var(--armor2));
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: 0 12px 16px rgba(0,0,0,.32);
+}
+.enemyUnit .u .head{
+  left: 50%; top: 4px;
+  width: 12px; height: 12px;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  background: radial-gradient(8px 6px at 35% 35%, rgba(255,255,255,.16), rgba(255,255,255,0) 70%),
+              linear-gradient(135deg, var(--steel1), var(--steel2));
+  border: 1px solid rgba(255,255,255,.10);
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.20);
+}
+.enemyUnit .u .weapon{
+  left: 58%; top: 12px;
+  width: 14px; height: 4px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(0,0,0,.18), var(--steel1));
+  transform: rotate(22deg);
+  box-shadow: 0 8px 12px rgba(0,0,0,.22);
+}
+.enemyUnit .u .weapon::after{
+  content:"";
+  position:absolute; right: -4px; top: 50%;
+  transform: translateY(-50%);
+  width: 0; height: 0;
+  border-left: 6px solid var(--steel1);
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
+.enemyUnit .u .shield{
+  left: 22%; top: 14px;
+  width: 9px; height: 11px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(0,0,0,.10), rgba(0,0,0,.30));
+  border: 1px solid rgba(255,255,255,.12);
+  box-shadow: 0 10px 14px rgba(0,0,0,.25);
+  opacity: .95;
 }
 
-.enemyUnit{
-  position:absolute;
-  width: 22px; height: 22px;
-  border-radius: 999px;
-  background:
-    radial-gradient(10px 8px at 35% 35%, rgba(255,255,255,.18), rgba(255,255,255,0) 70%),
-    linear-gradient(135deg, rgba(255,75,110,.95), rgba(43,7,17,.92));
-  border: 1px solid rgba(255,75,110,.35);
-  box-shadow: 0 10px 18px rgba(0,0,0,.35);
-  transform: translate(-50%, -50%);
-}
-.enemyUnit.boss{
-  width: 30px; height: 30px;
-  border-radius: 14px;
+/* Type variants (more "character" variety) */
+.enemyUnit.raider{ --armor1: rgba(255,75,110,.95); --armor2: rgba(60,10,22,.95); --accent: rgba(255,210,74,.92); }
+.enemyUnit.brute{ --armor1: rgba(255,139,46,.95); --armor2: rgba(55,16,8,.92); }
+.enemyUnit.archer{ --armor1: rgba(72,255,190,.75); --armor2: rgba(16,46,40,.92); }
+.enemyUnit.shaman{ --armor1: rgba(217,139,255,.88); --armor2: rgba(34,16,58,.92); }
+
+.enemyUnit.boss .u .body{ width: 20px; height: 20px; top: 12px; }
+.enemyUnit.boss .u .head{ width: 14px; height: 14px; }
+.enemyUnit.boss .u .weapon{ width: 18px; }
+
+/* subtle march */
+.enemyUnit{ animation: march 760ms ease-in-out infinite; }
+@keyframes march{
+  0%{ transform: translate(-50%,-50%) translateY(0px); }
+  50%{ transform: translate(-50%,-50%) translateY(-1.6px); }
+  100%{ transform: translate(-50%,-50%) translateY(0px); }
 }
 
 .enemyUnit .tag{
@@ -640,19 +753,18 @@ h3{ margin-top: 8px; font-size: 15px; }
   white-space: nowrap;
 }
 
-/* NEW: HP bar */
 .enemyUnit .hp{
   position:absolute;
-  left: 50%; top: 26px;
+  left: 50%; top: 30px;
   transform: translateX(-50%);
-  width: 34px;
+  width: 38px;
   height: 6px;
   border-radius: 999px;
   background: rgba(0,0,0,.45);
   border: 1px solid rgba(255,255,255,.12);
   overflow:hidden;
 }
-.enemyUnit.boss .hp{ top: 34px; width: 46px; height: 7px; }
+.enemyUnit.boss .hp{ top: 40px; width: 52px; height: 7px; }
 .enemyUnit .hp > i{
   display:block;
   height:100%;
@@ -660,7 +772,6 @@ h3{ margin-top: 8px; font-size: 15px; }
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(255,210,74,.95), rgba(255,75,110,.95));
 }
-
 /* NEW: floating damage text */
 .dmg{
   position:absolute;
@@ -684,14 +795,27 @@ h3{ margin-top: 8px; font-size: 15px; }
 
 .shot{
   position:absolute;
-  width: 8px; height: 8px;
-  border-radius: 999px;
-  background: rgba(127,243,255,.95);
-  box-shadow: 0 0 0 6px rgba(127,243,255,.12);
   transform: translate(-50%, -50%);
   opacity: .9;
 }
-
+.shot.arrow{
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(127,243,255,.20), rgba(127,243,255,.95));
+  box-shadow: 0 0 0 6px rgba(127,243,255,.10), 0 12px 18px rgba(0,0,0,.25);
+}
+.shot.arrow::after{
+  content:"";
+  position:absolute;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0; height: 0;
+  border-left: 6px solid rgba(127,243,255,.95);
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+}
 /* NEW: battlefield vignette + win/lose tint */
 .bfTint{
   position:absolute;
